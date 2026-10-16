@@ -119,14 +119,14 @@ final class BrowserViewController: NSViewController, NSSearchFieldDelegate, WKNa
         globalMoveMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.mouseMoved]) { [weak self] _ in self?.pointerMoved() }
     }
 
-    /// True while the pointer is over the bar's area (or the strip along the top edge that brings it out).
+    /// True while the pointer is over the bar's area (or the strip along the bottom edge that brings it out).
     private func pointerInBarZone() -> Bool {
         guard let window = view.window else { return false }
         let mouse = NSEvent.mouseLocation
         let frame = window.frame
-        let fromTop = frame.maxY - mouse.y
-        guard mouse.x >= frame.minX, mouse.x <= frame.maxX, fromTop >= -4 else { return false }
-        return fromTop <= (toolbarShown ? toolbarHeight + 18 : 56)
+        let fromBottom = mouse.y - frame.minY
+        guard mouse.x >= frame.minX, mouse.x <= frame.maxX, fromBottom >= -4 else { return false }
+        return fromBottom <= (toolbarShown ? toolbarHeight + 18 : 56)
     }
 
     private func pointerMoved() {
@@ -156,7 +156,7 @@ final class BrowserViewController: NSViewController, NSSearchFieldDelegate, WKNa
         DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
     }
 
-    /// Everything on the bar bursts out from the top and spreads sideways at once (and retracts the same way).
+    /// Everything on the bar slides up from the bottom edge together (and retracts the same way).
     func setToolbar(shown: Bool, animated: Bool = true) {
         guard shown != toolbarShown, isViewLoaded else { return }
         toolbarShown = shown
@@ -165,14 +165,14 @@ final class BrowserViewController: NSViewController, NSSearchFieldDelegate, WKNa
             context.duration = animated ? 0.22 : 0
             context.timingFunction = CAMediaTimingFunction(name: .easeOut)
             context.allowsImplicitAnimation = true
-            webTopConstraint?.animator().constant = shown ? panelTop : 8
+            webBottom?.animator().constant = -(shown ? toolbarHeight + 4 : 8)
         }
         toolbar.layoutSubtreeIfNeeded()
         let items: [NSView] = [closeLight, minLight, zoomLight, aincradButton, sidebarButton, backButton, forwardButton, reloadButton,
                                searchButton, downloadsButton, shareButton, bookmarkButton, addTabButton, tabControl, addressField, privacyBadge]
             .filter { !$0.isHidden && $0.layer != nil }
         let mid = toolbar.bounds.midX
-        let rise: CGFloat = 22
+        let rise: CGFloat = -22   // slides up from below the window's bottom edge
         for view in items {
             guard let layer = view.layer, let parent = view.superview else { continue }
             let frame = parent.convert(view.frame, to: toolbar)
@@ -237,7 +237,8 @@ final class BrowserViewController: NSViewController, NSSearchFieldDelegate, WKNa
         tabControl.constraints.first { $0.firstAttribute == .height }?.constant = AINCRADTheme.tabHeight
         toolbarHeightConstraint?.constant = toolbarHeight
         rowGuideTop?.constant = rowCenterOffset
-        webTopConstraint?.constant = panelTop
+        webTopConstraint?.constant = panelTopGap
+        webBottom?.constant = -panelBottom
         webLeading?.constant = panelInset; webTrailing?.constant = -panelInset
         let lightD = (AINCRADTheme.buttonSize * 0.72).rounded()
         lightsLeading?.constant = 10
@@ -363,7 +364,7 @@ final class BrowserViewController: NSViewController, NSSearchFieldDelegate, WKNa
         rowGuideTop?.isActive = true
         rowGuide.heightAnchor.constraint(equalToConstant: 0).isActive = true
         NSLayoutConstraint.activate([
-            toolbar.topAnchor.constraint(equalTo: mainView.topAnchor), toolbar.leadingAnchor.constraint(equalTo: mainView.leadingAnchor), toolbar.trailingAnchor.constraint(equalTo: mainView.trailingAnchor), toolbar.heightAnchor.constraint(equalToConstant: toolbarHeight),
+            toolbar.bottomAnchor.constraint(equalTo: mainView.bottomAnchor), toolbar.leadingAnchor.constraint(equalTo: mainView.leadingAnchor), toolbar.trailingAnchor.constraint(equalTo: mainView.trailingAnchor), toolbar.heightAnchor.constraint(equalToConstant: toolbarHeight),
             lightsLeading!, lights.centerYAnchor.constraint(equalTo: rowCenter),
             nav.leadingAnchor.constraint(equalTo: lights.trailingAnchor, constant: 14), nav.centerYAnchor.constraint(equalTo: rowCenter),
             rightTrailing!, right.centerYAnchor.constraint(equalTo: rowCenter),
@@ -371,7 +372,7 @@ final class BrowserViewController: NSViewController, NSSearchFieldDelegate, WKNa
             tabControl.centerYAnchor.constraint(equalTo: rowCenter), tabControl.heightAnchor.constraint(equalToConstant: pillHeight),
             addressLeading!, addressField.trailingAnchor.constraint(equalTo: tabControl.trailingAnchor), addressField.centerYAnchor.constraint(equalTo: rowCenter),
             addressField.heightAnchor.constraint(equalToConstant: AINCRADTheme.buttonSize),
-            progress.leadingAnchor.constraint(equalTo: toolbar.leadingAnchor), progress.trailingAnchor.constraint(equalTo: toolbar.trailingAnchor), progress.bottomAnchor.constraint(equalTo: toolbar.bottomAnchor), progress.heightAnchor.constraint(equalToConstant: 2),
+            progress.leadingAnchor.constraint(equalTo: toolbar.leadingAnchor), progress.trailingAnchor.constraint(equalTo: toolbar.trailingAnchor), progress.topAnchor.constraint(equalTo: toolbar.topAnchor), progress.heightAnchor.constraint(equalToConstant: 2),
         ])
         toolbarHeightConstraint = toolbar.constraints.first { $0.firstAttribute == .height && $0.secondItem == nil }
         rebuildTabControl()
@@ -418,23 +419,34 @@ final class BrowserViewController: NSViewController, NSSearchFieldDelegate, WKNa
 
     /// How far the page panel is inset from the window sides: the end buttons stick out past its edges (the page gets narrower to make room).
     private var panelInset: CGFloat { BrowserPrefsModel.shared.prefs.floatingToolbar ? AINCRADTheme.buttonSize + 6 : 8 }
-    /// The page sits below the bar while it's out and rises to the top when it tucks away, so the two stay separate.
-    private var panelTop: CGFloat {
+    /// The page sits above the bar while it's out and grows to the bottom when it tucks away, so the two stay separate.
+    private var panelBottom: CGFloat {
         guard BrowserPrefsModel.shared.prefs.floatingToolbar else { return toolbarHeight }
         return toolbarShown || !autoHide ? toolbarHeight + 4 : 8
     }
+    /// A thin gap above the page; the invisible strip in it drags the window.
+    private let panelTopGap: CGFloat = 12
 
     private func configureWebContainer() {
-        webTopConstraint = webContainer.topAnchor.constraint(equalTo: mainView.topAnchor, constant: panelTop)
+        webTopConstraint = webContainer.topAnchor.constraint(equalTo: mainView.topAnchor, constant: panelTopGap)
         webLeading = webContainer.leadingAnchor.constraint(equalTo: mainView.leadingAnchor, constant: panelInset)
         webTrailing = webContainer.trailingAnchor.constraint(equalTo: mainView.trailingAnchor, constant: -panelInset)
-        webBottom = webContainer.bottomAnchor.constraint(equalTo: mainView.bottomAnchor, constant: -8)
+        webBottom = webContainer.bottomAnchor.constraint(equalTo: mainView.bottomAnchor, constant: -panelBottom)
         webContainer.translatesAutoresizingMaskIntoConstraints = false
         webContainer.wantsLayer = true
         webContainer.layer?.masksToBounds = true
         // Below the toolbar in z-order, so the buttons overlap the panel's border.
         mainView.addSubview(webContainer, positioned: .below, relativeTo: toolbar)
         NSLayoutConstraint.activate([webTopConstraint!, webLeading!, webTrailing!, webBottom!])
+
+        // With the bar at the bottom there's no title bar: this invisible strip along the top moves the window.
+        let dragStrip = DragToolbarView()
+        dragStrip.translatesAutoresizingMaskIntoConstraints = false
+        mainView.addSubview(dragStrip)
+        NSLayoutConstraint.activate([
+            dragStrip.topAnchor.constraint(equalTo: mainView.topAnchor), dragStrip.leadingAnchor.constraint(equalTo: mainView.leadingAnchor),
+            dragStrip.trailingAnchor.constraint(equalTo: mainView.trailingAnchor), dragStrip.heightAnchor.constraint(equalToConstant: panelTopGap),
+        ])
 
     }
 
