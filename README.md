@@ -2,6 +2,20 @@
 
 AINCRAD Browser is a lightweight, native macOS browser with a Safari-inspired layout and the established AINCRAD visual system. It uses the WebKit framework already included with macOS, so the application bundle stays small and no browser engine source checkout is required.
 
+## Features you can customise
+
+All of these live in one settings page. With AINCRAD installed it's **AINCRAD Settings › Browser**
+(⌘, in the browser opens it); without AINCRAD the same page opens in the browser.
+
+- **Ad and tracker blocking** (WebKit content rules, nothing leaves your Mac) plus your own block list
+- **https upgrades** with automatic fallback, **tracking-tag stripping** (utm_, fbclid, gclid…), pop-up and autoplay control
+- **Reader mode** (⌘⇧R) in your theme's colours, with text size, width and serif or sans
+- **Dark mode for every page**, default page zoom, your own CSS on every page
+- **Search engines** (DuckDuckGo, Google, Bing, Brave, Ecosia, Startpage, Kagi or your own URL)
+- **Appear as** Safari, Chrome, Firefox or iPhone to sites that care
+- **Start page**: HUD brackets, favourites as circles, recent sites, a clock, all optional; new tabs can open blank
+- Pinned tabs, tab reordering and duplication, session restore (optional), private windows
+
 ## Works with AINCRAD
 
 AINCRAD Browser is its own app and works fine alone. When [AINCRAD](https://github.com/djag1337/AINCRAD)
@@ -14,6 +28,8 @@ is installed too, the two respond to each other:
 - **Links.** Web links opened from the launcher go to AINCRAD Browser (a switch in AINCRAD's settings).
 - **Download bubbles.** Finished downloads show up as SAO notification bubbles.
 - **◎ button.** Opens the AINCRAD launcher from the toolbar (hidden when AINCRAD isn't installed).
+- **One settings page.** The browser's settings are a page of AINCRAD Settings.
+- **Opt-in install.** In AINCRAD Settings › Browser, turning on *Use AINCRAD Browser* asks, then downloads the release from this repo's GitHub Releases and installs it. Nothing downloads until you approve; removing it moves it to the Trash.
 
 No macOS permissions are involved. The browser writes a small file,
 `~/Library/Application Support/AINCRAD Browser/link.json` (tab titles and addresses, 40 bookmarks,
@@ -49,6 +65,8 @@ The browser also answers `aincrad-browser://open?url=…`, `aincrad-browser://ta
 ```bash
 ./scripts/build.sh
 ```
+
+`./scripts/release.sh` builds `dist/AINCRAD-Browser.zip`, the file AINCRAD's installer downloads from the latest GitHub release.
 
 This runs XcodeGen, builds Release into `~/Library/Caches/AINCRAD-Browser-build` (outside iCloud,
 whose file attributes break code signing), and installs `/Applications/AINCRAD Browser.app`.

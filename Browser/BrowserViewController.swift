@@ -16,6 +16,9 @@ final class BrowserViewController: NSViewController, NSSearchFieldDelegate, WKNa
     /// The theme's panel colour, laid over the blur (a visual effect view draws over its own layer colour).
     private let toolbarTint = NSView()
     private let tabControl = SolidSegmentedControl()
+    /// https links we swapped in for http ones, so a site without https can fall back to the original.
+    private var upgradedFrom: [String: URL] = [:]
+    private var noUpgrade = Set<String>()
     private let addressField = NSSearchField()
     private let progress = NSProgressIndicator()
     private let backButton = NSButton()
@@ -53,13 +56,28 @@ final class BrowserViewController: NSViewController, NSSearchFieldDelegate, WKNa
         configureWebContainer()
         selectTab(at: selectedIndex)
         NotificationCenter.default.addObserver(self, selector: #selector(refreshStartPages), name: .browserDataChanged, object: nil)
-        NotificationCenter.default.addObserver(self, selector: #selector(refreshStartPages), name: .startPageSettingsChanged, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(themeChanged), name: AINCRADTheme.changed, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(prefsChanged), name: .browserPrefsChanged, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(rulesReady), name: .browserFeaturesReady, object: nil)
     }
 
     override func viewDidAppear() {
         super.viewDidAppear()
         applyTheme()
+    }
+
+    @objc private func prefsChanged() {
+        BrowserFeatures.shared.prefsChanged()
+        tabs.forEach { BrowserFeatures.shared.configure($0) }
+        refreshStartPages()
+    }
+
+    /// Content rules finished compiling (or were removed): attach them to open tabs. Doesn't re-trigger a compile.
+    @objc private func rulesReady() { tabs.forEach { BrowserFeatures.shared.configure($0) } }
+
+    func toggleReader() {
+        guard tabs.indices.contains(selectedIndex), tabs[selectedIndex].webView.url?.scheme != "glass" else { NSSound.beep(); return }
+        tabs[selectedIndex].webView.evaluateJavaScript(BrowserFeatures.shared.readerScript()) { _, _ in }
     }
 
     @objc private func themeChanged() {
@@ -217,13 +235,15 @@ final class BrowserViewController: NSViewController, NSSearchFieldDelegate, WKNa
         ])
     }
 
-    private func createTab(state: TabState?, select: Bool) {
+    private func createTab(state: TabState?, select: Bool, blank: Bool = false) {
         let tab = BrowserTab(privateMode: privateMode)
         tab.webView.navigationDelegate = self; tab.webView.uiDelegate = self
         tab.pinned = state?.pinned ?? false
         tabs.append(tab)
         if let state, let url = URL(string: state.url), url.scheme != "glass" {
             tab.webView.load(URLRequest(url: url)); tab.title = state.title
+        } else if blank {
+            tab.webView.loadHTMLString(StartPage.blank(), baseURL: URL(string: "glass://start"))
         } else {
             tab.webView.loadHTMLString(StartPage.html(privateMode: privateMode), baseURL: URL(string: "glass://start"))
         }
@@ -231,7 +251,7 @@ final class BrowserViewController: NSViewController, NSSearchFieldDelegate, WKNa
         if select { selectTab(at: tabs.count - 1) }
     }
 
-    func newTab() { createTab(state: nil, select: true); focusAddressBar() }
+    func newTab() { createTab(state: nil, select: true, blank: BrowserPrefsModel.shared.prefs.newTabPage == "blank"); focusAddressBar() }
     @objc private func addTabAction() { newTab() }
 
     func closeCurrentTab() {
@@ -354,8 +374,7 @@ final class BrowserViewController: NSViewController, NSSearchFieldDelegate, WKNa
         if let explicit = URL(string: raw), explicit.scheme != nil { url = explicit }
         else if raw.contains(".") && !raw.contains(" ") { url = URL(string: "https://\(raw)") }
         else {
-            let query = raw.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? raw
-            url = URL(string: String(format: BrowserStore.shared.searchTemplate, query))
+            url = BrowserPrefsModel.shared.prefs.searchURL(for: raw)
         }
         if let url { openURL(url) }
     }
@@ -460,6 +479,11 @@ final class BrowserViewController: NSViewController, NSSearchFieldDelegate, WKNa
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) { showLoadError(error, in: webView) }
     private func showLoadError(_ error: Error, in webView: WKWebView) {
         guard (error as NSError).code != NSURLErrorCancelled else { return }
+        // An https upgrade the site can't serve falls back to the original http link.
+        if let failing = (error as NSError).userInfo[NSURLErrorFailingURLStringErrorKey] as? String, let original = upgradedFrom.removeValue(forKey: failing) {
+            var request = URLRequest(url: original); request.setValue("1", forHTTPHeaderField: "X-AINCRAD-No-Upgrade")
+            noUpgrade.insert(original.absoluteString); webView.load(request); return
+        }
         let escaped = error.localizedDescription.replacingOccurrences(of: "&", with: "&amp;").replacingOccurrences(of: "<", with: "&lt;")
         webView.loadHTMLString("<meta name='color-scheme' content='light dark'><style>body{font:16px -apple-system;padding:12vh 18%;}h1{font-size:30px;color:#f5a623}</style><h1>AINCRAD Browser couldn’t open this page</h1><p>\(escaped)</p>", baseURL: nil)
     }
@@ -467,6 +491,13 @@ final class BrowserViewController: NSViewController, NSSearchFieldDelegate, WKNa
     func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
         if navigationAction.shouldPerformDownload { decisionHandler(.download); return }
         guard let url = navigationAction.request.url else { decisionHandler(.cancel); return }
+        if navigationAction.targetFrame?.isMainFrame ?? true, ["http", "https"].contains(url.scheme ?? "") {
+            if let clean = BrowserFeatures.shared.cleaned(url) { decisionHandler(.cancel); webView.load(URLRequest(url: clean)); return }
+            if !noUpgrade.contains(url.absoluteString), let secure = BrowserFeatures.shared.upgraded(url) {
+                upgradedFrom[secure.absoluteString] = url
+                decisionHandler(.cancel); webView.load(URLRequest(url: secure)); return
+            }
+        }
         if ["http", "https", "file", "about", "data", "blob", "glass"].contains(url.scheme?.lowercased() ?? "") { decisionHandler(.allow) }
         else { NSWorkspace.shared.open(url); decisionHandler(.cancel) }
     }
@@ -475,6 +506,7 @@ final class BrowserViewController: NSViewController, NSSearchFieldDelegate, WKNa
     func webView(_ webView: WKWebView, navigationResponse: WKNavigationResponse, didBecome download: WKDownload) { DownloadManager.shared.begin(download) }
 
     func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration, for navigationAction: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
+        if BrowserPrefsModel.shared.prefs.blockPopups, navigationAction.navigationType == .other, !BrowserFeatures.shared.userJustActed { return nil }
         createTab(state: nil, select: true)
         if let url = navigationAction.request.url { openURL(url) }
         return nil

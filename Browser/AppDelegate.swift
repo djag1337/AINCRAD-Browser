@@ -1,16 +1,20 @@
 import AppKit
 import UniformTypeIdentifiers
+import SwiftUI
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var windows: [BrowserWindowController] = []
     private var preferencesController: PreferencesWindowController?
+    private var settingsController: NSWindowController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         AINCRADTheme.start()
+        BrowserStore.shared.migrateToSharedPrefs()
+        BrowserFeatures.shared.start()
         buildMenus()
         NotificationCenter.default.addObserver(self, selector: #selector(publishLink), name: .browserDataChanged, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(browserStateChanged), name: .browserWindowStateChanged, object: nil)
-        if BrowserStore.shared.savedSession.windows.isEmpty {
+        if BrowserStore.shared.savedSession.windows.isEmpty || !BrowserPrefsModel.shared.prefs.restoreSession {
             openWindow(privateMode: false)
         } else {
             for state in BrowserStore.shared.savedSession.windows {
@@ -119,10 +123,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func savePDF(_ sender: Any?) { currentBrowser()?.savePageAsPDF() }
     @objc private func copyLink(_ sender: Any?) { currentBrowser()?.copyPageLink() }
     @objc private func showDownloads(_ sender: Any?) { DownloadManager.shared.showWindow() }
+    /// With AINCRAD installed the browser's settings are a page of AINCRAD Settings; otherwise the same page opens here.
     @objc private func showSettings(_ sender: Any?) {
+        if NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.djag.aincrad") != nil, let url = URL(string: "aincrad://settings/browser") {
+            NSWorkspace.shared.open(url); return
+        }
+        if settingsController == nil {
+            let host = NSHostingController(rootView: Form { BrowserPrefsForm() }.formStyle(.grouped))
+            let window = NSWindow(contentViewController: host)
+            window.title = "AINCRAD Browser Settings"
+            window.styleMask = [.titled, .closable, .resizable]
+            window.setContentSize(NSSize(width: 560, height: 680))
+            window.isReleasedWhenClosed = false
+            window.center()
+            settingsController = NSWindowController(window: window)
+        }
+        settingsController?.showWindow(nil); NSApp.activate(ignoringOtherApps: true)
+    }
+    @objc private func showPrivacyData(_ sender: Any?) {
         let controller = preferencesController ?? PreferencesWindowController()
         preferencesController = controller; controller.showWindow(nil); controller.window?.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true)
     }
+    @objc private func toggleReader(_ sender: Any?) { currentBrowser()?.toggleReader() }
     @objc private func openPasswords(_ sender: Any?) {
         NSWorkspace.shared.open(URL(fileURLWithPath: "/System/Applications/Passwords.app"))
     }
@@ -148,6 +170,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let appMenu = NSMenu(title: "AINCRAD Browser"); appItem.submenu = appMenu
         appMenu.addItem(withTitle: "About AINCRAD Browser", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
         appMenu.addItem(withTitle: "Settings…", action: #selector(showSettings(_:)), keyEquivalent: ",").target = self
+        appMenu.addItem(withTitle: "Privacy & Data…", action: #selector(showPrivacyData(_:)), keyEquivalent: "").target = self
         appMenu.addItem(.separator())
         appMenu.addItem(withTitle: "Quit AINCRAD Browser", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
 
@@ -181,6 +204,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let view = NSMenu(title: "View"); viewItem.submenu = view
         view.addItem(withTitle: "Show Address Bar", action: #selector(focusAddress(_:)), keyEquivalent: "l").target = self
         view.addItem(withTitle: "Toggle Sidebar", action: #selector(toggleSidebar(_:)), keyEquivalent: "s").target = self
+        let reader = view.addItem(withTitle: "Reader Mode", action: #selector(toggleReader(_:)), keyEquivalent: "r")
+        reader.keyEquivalentModifierMask = [.command, .shift]; reader.target = self
         view.addItem(.separator())
         view.addItem(withTitle: "Actual Size", action: #selector(resetZoom(_:)), keyEquivalent: "0").target = self
         view.addItem(withTitle: "Zoom In", action: #selector(zoomIn(_:)), keyEquivalent: "+").target = self

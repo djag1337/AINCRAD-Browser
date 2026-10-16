@@ -36,19 +36,16 @@ final class BrowserStore {
         current.set(true, forKey: "didMigrateGlassProfile")
     }
 
-    var searchTemplate: String {
-        get { defaults.string(forKey: "searchTemplate") ?? "https://duckduckgo.com/?q=%@" }
-        set { defaults.set(newValue, forKey: "searchTemplate") }
-    }
-
-    var showFavoritesOnStartPage: Bool {
-        get { defaults.object(forKey: "showFavoritesOnStartPage") as? Bool ?? true }
-        set { defaults.set(newValue, forKey: "showFavoritesOnStartPage"); NotificationCenter.default.post(name: .startPageSettingsChanged, object: nil) }
-    }
-
-    var showRecentOnStartPage: Bool {
-        get { defaults.object(forKey: "showRecentOnStartPage") as? Bool ?? true }
-        set { defaults.set(newValue, forKey: "showRecentOnStartPage"); NotificationCenter.default.post(name: .startPageSettingsChanged, object: nil) }
+    /// One-time move of the old per-app settings into the shared preferences file (the one AINCRAD Settings edits).
+    func migrateToSharedPrefs() {
+        guard !FileManager.default.fileExists(atPath: BrowserPrefsModel.fileURL.path) else { return }
+        var prefs = BrowserPrefsModel.shared.prefs
+        if let template = defaults.string(forKey: "searchTemplate") {
+            prefs.searchEngine = template.contains("google") ? "google" : template.contains("bing") ? "bing" : "duckduckgo"
+        }
+        prefs.showFavorites = defaults.object(forKey: "showFavoritesOnStartPage") as? Bool ?? true
+        prefs.showRecent = defaults.object(forKey: "showRecentOnStartPage") as? Bool ?? true
+        BrowserPrefsModel.shared.prefs = prefs
     }
 
     func permissions(for host: String) -> SitePermissions { sitePermissions[host] ?? SitePermissions() }
@@ -126,5 +123,4 @@ final class BrowserStore {
 extension Notification.Name {
     static let browserDataChanged = Notification.Name("AINCRADBrowserDataChanged")
     static let sitePermissionsChanged = Notification.Name("AINCRADSitePermissionsChanged")
-    static let startPageSettingsChanged = Notification.Name("AINCRADStartPageSettingsChanged")
 }

@@ -13,11 +13,13 @@ final class BrowserTab: NSObject {
         configuration.websiteDataStore = privateMode ? .nonPersistent() : .default()
         configuration.preferences.isElementFullscreenEnabled = true
         configuration.defaultWebpagePreferences.allowsContentJavaScript = true
+        BrowserFeatures.shared.creationConfiguration(configuration)
         webView = WKWebView(frame: .zero, configuration: configuration)
         super.init()
         webView.allowsMagnification = true
         webView.allowsBackForwardNavigationGestures = true
         webView.setValue(false, forKey: "drawsBackground")
+        BrowserFeatures.shared.configure(self)
     }
 
     var state: TabState {
