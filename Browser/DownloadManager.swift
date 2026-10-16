@@ -44,14 +44,33 @@ final class DownloadManager: NSObject, WKDownloadDelegate {
     func clearFinished() { records.removeAll { $0.finished }; changed() }
 
     func download(_ download: WKDownload, decideDestinationUsing response: URLResponse, suggestedFilename: String, completionHandler: @escaping (URL?) -> Void) {
-        let record = recordFor(download); record.filename = suggestedFilename
-        let panel = NSSavePanel(); panel.nameFieldStringValue = suggestedFilename; panel.canCreateDirectories = true
+        let record = recordFor(download)
+        let name = (suggestedFilename as NSString).lastPathComponent.nonEmpty ?? "Download"
+        record.filename = name
+        if !BrowserPrefsModel.shared.prefs.askDownloadLocation, let folder = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first {
+            let destination = Self.uniqueURL(in: folder, name: name)
+            record.destination = destination; record.status = "Downloading…"
+            changed(); completionHandler(destination)
+            return
+        }
+        let panel = NSSavePanel(); panel.nameFieldStringValue = name; panel.canCreateDirectories = true
         panel.begin { [weak self] result in
             let destination = result == .OK ? panel.url : nil
             record.destination = destination; record.status = destination == nil ? "Cancelled" : "Downloading…"
             if destination == nil { record.finished = true }
             self?.changed(); completionHandler(destination)
         }
+    }
+
+    /// "name.ext", or "name 2.ext", "name 3.ext"… if that already exists.
+    private static func uniqueURL(in folder: URL, name: String) -> URL {
+        var url = folder.appendingPathComponent(name)
+        let base = (name as NSString).deletingPathExtension, ext = (name as NSString).pathExtension
+        var n = 2
+        while FileManager.default.fileExists(atPath: url.path) {
+            url = folder.appendingPathComponent(ext.isEmpty ? "\(base) \(n)" : "\(base) \(n).\(ext)"); n += 1
+        }
+        return url
     }
 
     func downloadDidFinish(_ download: WKDownload) {

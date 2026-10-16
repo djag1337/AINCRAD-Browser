@@ -77,6 +77,10 @@ final class BrowserViewController: NSViewController, NSSearchFieldDelegate, WKNa
         super.viewDidAppear()
         applyTheme()
         installMouseMonitor()
+        if let window = view.window {
+            NotificationCenter.default.addObserver(self, selector: #selector(resizeBegan), name: NSWindow.willStartLiveResizeNotification, object: window)
+            NotificationCenter.default.addObserver(self, selector: #selector(resizeEnded), name: NSWindow.didEndLiveResizeNotification, object: window)
+        }
         [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton].forEach { view.window?.standardWindowButton($0)?.isHidden = true }
         // Show the bar for a moment on open so you can see where it lives, then tuck it away.
         if autoHide { scheduleHide(after: 2.0) }
@@ -90,7 +94,7 @@ final class BrowserViewController: NSViewController, NSSearchFieldDelegate, WKNa
     // MARK: Auto-hiding toolbar
 
     /// One row: window buttons, navigation, the tab pills, then search and the rest.
-    private var pillHeight: CGFloat { AINCRADTheme.tabHeight }
+    private var pillHeight: CGFloat { AINCRADTheme.tabHeight + 12 }
     private var toolbarHeight: CGFloat { AINCRADTheme.buttonSize + 26 }
     private var rowCenterOffset: CGFloat { toolbarHeight / 2 }
     private let rowGuide = NSLayoutGuide()
@@ -204,6 +208,20 @@ final class BrowserViewController: NSViewController, NSSearchFieldDelegate, WKNa
         if animated { DispatchQueue.main.asyncAfter(deadline: .now() + 0.18, execute: finish) } else { finish() }
     }
 
+    /// Rounded-corner masking and a live window shadow over a playing video are redone every frame of a resize; drop both while dragging.
+    @objc private func resizeBegan() {
+        webContainer.layer?.masksToBounds = false
+        webContainer.layer?.cornerRadius = 0
+        view.window?.hasShadow = false
+    }
+
+    @objc private func resizeEnded() {
+        webContainer.layer?.masksToBounds = true
+        applyTheme()
+        view.window?.hasShadow = true
+        view.window?.invalidateShadow()
+    }
+
     @objc private func prefsChanged() {
         BrowserFeatures.shared.prefsChanged()
         applyTheme()
@@ -234,7 +252,7 @@ final class BrowserViewController: NSViewController, NSSearchFieldDelegate, WKNa
         allButtons.forEach { $0.updateSize() }
         addressField.constraints.first { $0.firstAttribute == .height }?.constant = AINCRADTheme.buttonSize
         addressField.layer?.cornerRadius = AINCRADTheme.buttonSize / 2
-        tabControl.constraints.first { $0.firstAttribute == .height }?.constant = AINCRADTheme.tabHeight
+        tabControl.constraints.first { $0.firstAttribute == .height }?.constant = AINCRADTheme.tabHeight + 12
         toolbarHeightConstraint?.constant = toolbarHeight
         rowGuideTop?.constant = rowCenterOffset
         webTopConstraint?.constant = panelTopGap
@@ -804,7 +822,10 @@ final class BrowserViewController: NSViewController, NSSearchFieldDelegate, WKNa
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) { showLoadError(error, in: webView) }
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) { showLoadError(error, in: webView) }
     private func showLoadError(_ error: Error, in webView: WKWebView) {
-        guard (error as NSError).code != NSURLErrorCancelled else { return }
+        let ns = error as NSError
+        guard ns.code != NSURLErrorCancelled else { return }
+        // WebKit reports 102 ('frame load interrupted') when a response turns into a download or plug-in: not a real failure.
+        if ns.domain == "WebKitErrorDomain", ns.code == 102 || ns.code == 204 { return }
         // An https upgrade the site can't serve falls back to the original http link.
         if let failing = (error as NSError).userInfo[NSURLErrorFailingURLStringErrorKey] as? String, let original = upgradedFrom.removeValue(forKey: failing) {
             var request = URLRequest(url: original); request.setValue("1", forHTTPHeaderField: "X-AINCRAD-No-Upgrade")
@@ -828,15 +849,87 @@ final class BrowserViewController: NSViewController, NSSearchFieldDelegate, WKNa
         else { NSWorkspace.shared.open(url); decisionHandler(.cancel) }
     }
 
+    /// Files the page can't show, and responses marked "attachment" (converter and download sites), become downloads.
+    func webView(_ webView: WKWebView, decidePolicyFor navigationResponse: WKNavigationResponse, decisionHandler: @escaping (WKNavigationResponsePolicy) -> Void) {
+        if let http = navigationResponse.response as? HTTPURLResponse,
+           http.value(forHTTPHeaderField: "Content-Disposition")?.lowercased().hasPrefix("attachment") == true {
+            decisionHandler(.download)
+        } else if !navigationResponse.canShowMIMEType {
+            decisionHandler(.download)
+        } else {
+            decisionHandler(.allow)
+        }
+    }
+
     func webView(_ webView: WKWebView, navigationAction: WKNavigationAction, didBecome download: WKDownload) { DownloadManager.shared.begin(download) }
     func webView(_ webView: WKWebView, navigationResponse: WKNavigationResponse, didBecome download: WKDownload) { DownloadManager.shared.begin(download) }
 
     func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration, for navigationAction: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
-        if BrowserPrefsModel.shared.prefs.blockPopups, navigationAction.navigationType == .other, !BrowserFeatures.shared.userJustActed { return nil }
+        if BrowserPrefsModel.shared.prefs.blockPopups, let reason = popupBlockReason(for: navigationAction) {
+            if let url = navigationAction.request.url, url.scheme?.hasPrefix("http") == true { showNotice("Pop-up blocked: \(url.host ?? "site")", action: "Open it") { [weak self] in
+                self?.createTab(state: nil, select: true); self?.openURL(url) } }
+            else { showNotice("Pop-up blocked") }
+            _ = reason
+            return nil
+        }
         createTab(state: nil, select: true)
         if let url = navigationAction.request.url { openURL(url) }
         return nil
     }
+
+    private static let signInHosts = ["accounts.google.com", "appleid.apple.com", "login.microsoftonline.com", "login.live.com", "github.com", "facebook.com", "www.facebook.com", "discord.com", "api.twitter.com", "x.com", "twitter.com", "paypal.com", "www.paypal.com", "checkout.stripe.com", "auth0.com", "okta.com", "login.yahoo.com", "id.twitch.tv", "steamcommunity.com", "accounts.spotify.com"]
+
+    private func site(_ host: String?) -> String { (host ?? "").split(separator: ".").suffix(2).joined(separator: ".").lowercased() }
+
+    /// Why a new window shouldn't open (nil = let it). A real click on a link may open one; a script's window.open needs a fresh
+    /// click and has to be the same site or a known sign-in page. Everything else (ads, pop-unders, timers) is blocked.
+    private func popupBlockReason(for action: WKNavigationAction) -> String? {
+        let gesture = BrowserFeatures.shared.userJustActed
+        guard gesture else { return "no click" }
+        if action.navigationType == .linkActivated { return nil }
+        guard let url = action.request.url, url.scheme?.hasPrefix("http") == true else { return nil }   // about:blank sign-in windows start empty
+        let current = tabs.indices.contains(selectedIndex) ? tabs[selectedIndex].webView.url?.host : nil
+        if site(url.host) == site(current) { return nil }
+        if Self.signInHosts.contains(where: { url.host == $0 || url.host?.hasSuffix("." + $0) == true }) { return nil }
+        return "another site"
+    }
+
+    // MARK: Notices
+
+    private var noticeView: NSButton?
+    private var noticeAction: (() -> Void)?
+
+    /// A small themed pill above the bar for a few seconds ("Pop-up blocked"), optionally with one action.
+    func showNotice(_ text: String, action: String? = nil, perform: (() -> Void)? = nil) {
+        guard isViewLoaded else { return }
+        noticeView?.removeFromSuperview()
+        let t = AINCRADTheme.self
+        let button = NSButton(title: action.map { "\(text)  ·  \($0)" } ?? text, target: self, action: #selector(noticeTapped))
+        button.isBordered = false
+        button.wantsLayer = true
+        button.font = t.bodyFont(size: 16, weight: .semibold)
+        button.contentTintColor = t.panelText
+        button.attributedTitle = NSAttributedString(string: button.title, attributes: [.font: t.bodyFont(size: 16, weight: .semibold), .foregroundColor: t.panelText])
+        button.layer?.cornerRadius = 18
+        button.layer?.backgroundColor = t.panel.withAlphaComponent(1).cgColor
+        button.layer?.borderColor = t.accent.cgColor
+        button.layer?.borderWidth = 1.5
+        button.layer?.shadowColor = t.shadowColor.cgColor; button.layer?.shadowOpacity = t.shadowOpacity; button.layer?.shadowRadius = t.shadowRadius
+        button.translatesAutoresizingMaskIntoConstraints = false
+        mainView.addSubview(button)
+        NSLayoutConstraint.activate([
+            button.centerXAnchor.constraint(equalTo: mainView.centerXAnchor), button.heightAnchor.constraint(equalToConstant: 36),
+            button.bottomAnchor.constraint(equalTo: mainView.bottomAnchor, constant: -(toolbarShown ? toolbarHeight + 14 : 18)),
+            button.widthAnchor.constraint(greaterThanOrEqualToConstant: 220),
+        ])
+        noticeView = button; noticeAction = perform
+        DispatchQueue.main.asyncAfter(deadline: .now() + 5) { [weak self, weak button] in
+            guard let self, let button, self.noticeView === button else { return }
+            button.removeFromSuperview(); self.noticeView = nil
+        }
+    }
+
+    @objc private func noticeTapped() { noticeAction?(); noticeView?.removeFromSuperview(); noticeView = nil }
 
     func webViewDidClose(_ webView: WKWebView) {
         if let index = tabs.firstIndex(where: { $0.webView === webView }) { selectedIndex = index; closeCurrentTab() }

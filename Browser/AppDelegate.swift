@@ -125,10 +125,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         BrowserStore.shared.saveSession(SessionState(windows: states))
     }
 
+    private var stateWork: DispatchWorkItem?
+
+    /// Window moves and resizes fire this every frame; save the session and refresh the link once things settle.
     @objc private func browserStateChanged() {
-        guard !windows.isEmpty else { return }
-        saveSession()
-        publishLink()
+        stateWork?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            guard let self, !self.windows.isEmpty else { return }
+            self.saveSession()
+            self.publishLink()
+        }
+        stateWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: work)
     }
 
     @objc private func newWindow(_ sender: Any?) { openWindow(privateMode: false) }

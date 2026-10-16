@@ -11,11 +11,13 @@ final class TabStripView: NSView {
 
     private var items: [Item] = []
     private var selected = 0
-    private let scroll = NSScrollView()
+    private let scroll = SidewaysScrollView()
     private let content = NSView()
     private var views: [TabItemView] = []
     /// Small pills (the toolbar's tab row) rather than full launcher rows.
     var compact = true
+    private var lastSelectedShown = -1
+    private var lastCount = -1
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -53,6 +55,8 @@ final class TabStripView: NSView {
         }
         for (i, v) in views.enumerated() { v.configure(items[i], selected: i == selected) }
         needsLayout = true
+        // Only follow the selection when it (or the number of tabs) changed, so scrolling by hand isn't fought.
+        if selected != lastSelectedShown || items.count != lastCount { lastSelectedShown = selected; lastCount = items.count; DispatchQueue.main.async { [weak self] in self?.scrollToVisible(selected) } }
     }
 
     func select(_ index: Int) {
@@ -61,12 +65,16 @@ final class TabStripView: NSView {
         scrollToVisible(index)
     }
 
+    /// Pills slide under a stationary pointer while scrolling; recompute which one is hovered.
+    func refreshHover() { views.forEach { $0.recomputeHover() } }
+
     func applyTheme() { for (i, v) in views.enumerated() { v.configure(items[i], selected: i == selected) } }
 
     override func layout() {
         super.layout()
         guard !views.isEmpty else { return }
         let gap: CGFloat = compact ? 8 : 5
+        let inset: CGFloat = compact ? 6 : 0
         let pinnedWidth: CGFloat = compact ? 32 : 40
         let pinnedCount = items.filter(\.pinned).count
         let normalCount = items.count - pinnedCount
@@ -75,11 +83,10 @@ final class TabStripView: NSView {
         var x: CGFloat = 0
         for (i, v) in views.enumerated() {
             let w = items[i].pinned ? pinnedWidth : width
-            v.frame = NSRect(x: x, y: 0, width: w, height: bounds.height)
+            v.frame = NSRect(x: x, y: inset, width: w, height: bounds.height - 2 * inset)
             x += w + gap
         }
         content.frame = NSRect(x: 0, y: 0, width: max(bounds.width, x - gap), height: bounds.height)
-        scrollToVisible(selected)
     }
 
     private func scrollToVisible(_ index: Int) {
@@ -88,7 +95,7 @@ final class TabStripView: NSView {
     }
 }
 
-private final class TabItemView: NSView {
+final class TabItemView: NSView {
     var onSelect: (() -> Void)?
     var onClose: (() -> Void)?
     var menuProvider: (() -> NSMenu?)?
@@ -99,7 +106,7 @@ private final class TabItemView: NSView {
     private let icon = NSImageView()
     private let label = NSTextField(labelWithString: "")
     private let close = NSButton()
-    private var hovering = false { didSet { refresh() } }
+    fileprivate var hovering = false { didSet { if hovering != oldValue { refresh() } } }
     private var isSelected = false
     private var pinned = false
     private var hasFavicon = false
@@ -111,22 +118,13 @@ private final class TabItemView: NSView {
         layer?.addSublayer(fill)
         layer?.addSublayer(shine)
         layer?.addSublayer(badge)
-        icon.translatesAutoresizingMaskIntoConstraints = false
         icon.imageScaling = .scaleProportionallyDown
         label.lineBreakMode = .byTruncatingTail
-        label.translatesAutoresizingMaskIntoConstraints = false
         close.isBordered = false
         close.image = NSImage(systemSymbolName: "xmark", accessibilityDescription: "Close Tab")?.withSymbolConfiguration(.init(pointSize: 12, weight: .bold))
         close.target = self; close.action = #selector(closeTapped)
         close.toolTip = "Close Tab (⌘W)"
-        close.translatesAutoresizingMaskIntoConstraints = false
         [icon, label, close].forEach(addSubview)
-        NSLayoutConstraint.activate([
-            label.centerYAnchor.constraint(equalTo: centerYAnchor),
-            label.trailingAnchor.constraint(equalTo: close.leadingAnchor, constant: -4),
-            close.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8), close.centerYAnchor.constraint(equalTo: centerYAnchor),
-            close.widthAnchor.constraint(equalToConstant: 20), close.heightAnchor.constraint(equalToConstant: 20),
-        ])
     }
 
     required init?(coder: NSCoder) { fatalError("not used") }
@@ -162,14 +160,19 @@ private final class TabItemView: NSView {
         let inset = hasFavicon ? 0 : (b * 0.22).rounded()
         icon.frame = badgeFrame.insetBy(dx: inset, dy: inset)
         layer?.shadowPath = CGPath(roundedRect: bounds, cornerWidth: corner, cornerHeight: corner, transform: nil)
-        for c in constraints where c.firstItem === label && c.firstAttribute == .leading { removeConstraint(c) }
-        label.leadingAnchor.constraint(equalTo: leadingAnchor, constant: badgeFrame.maxX + 9).isActive = true
+        let closeSide: CGFloat = 20
+        close.frame = CGRect(x: bounds.width - closeSide - 8, y: (h - closeSide) / 2, width: closeSide, height: closeSide)
+        let textX = badgeFrame.maxX + 9
+        let lineH = ceil(label.intrinsicContentSize.height)
+        label.frame = CGRect(x: textX, y: ((h - lineH) / 2).rounded(), width: max(0, (close.isHidden ? bounds.width - 12 : close.frame.minX - 4) - textX), height: lineH)
     }
 
     private func refresh() {
         let t = AINCRADTheme.self
         label.font = t.bodyFont(size: compact ? 16 : t.tabFontSize, weight: .medium)
+        let wasHidden = close.isHidden
         close.isHidden = pinned || !(isSelected || hovering)
+        if wasHidden != close.isHidden { needsLayout = true }
         layer?.cornerRadius = compact ? bounds.height / 2 : t.cornerRadius
         layer?.borderWidth = t.borderWidth
         layer?.masksToBounds = false
@@ -184,18 +187,24 @@ private final class TabItemView: NSView {
         badge.backgroundColor = state.badge.cgColor
         icon.contentTintColor = hasFavicon ? nil : state.glyph
         if state.glow {
-            layer?.shadowColor = t.accent.cgColor; layer?.shadowOpacity = t.glowOpacity
-            layer?.shadowRadius = t.glow; layer?.shadowOffset = .zero
+            layer?.shadowColor = t.accent.cgColor; layer?.shadowOpacity = t.glowOpacity * (compact ? 0.6 : 1)
+            layer?.shadowRadius = compact ? min(t.glow, 5) : t.glow; layer?.shadowOffset = .zero
         } else {
-            layer?.shadowColor = t.shadowColor.cgColor; layer?.shadowOpacity = t.shadowOpacity
-            layer?.shadowRadius = t.shadowRadius; layer?.shadowOffset = CGSize(width: 0, height: -2)
+            layer?.shadowColor = t.shadowColor.cgColor; layer?.shadowOpacity = t.shadowOpacity * (compact ? 0.6 : 1)
+            layer?.shadowRadius = compact ? min(t.shadowRadius, 4) : t.shadowRadius; layer?.shadowOffset = CGSize(width: 0, height: -2)
         }
     }
 
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
         trackingAreas.forEach(removeTrackingArea)
-        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways], owner: self))
+        addTrackingArea(NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
+    }
+
+    func recomputeHover() {
+        guard let window else { hovering = false; return }
+        let p = convert(window.mouseLocationOutsideOfEventStream, from: nil)
+        hovering = bounds.contains(p) && (superview?.visibleRect.contains(convert(p, to: superview)) ?? true)
     }
 
     override func mouseEntered(with event: NSEvent) { hovering = true }
@@ -344,5 +353,19 @@ final class CircleButton: NSControl {
         let inside = bounds.contains(convert(event.locationInWindow, from: nil))
         pressed = false
         if inside, isEnabled { sendAction(action, to: target) }
+    }
+}
+
+/// A scroll view that moves sideways for a plain mouse wheel (vertical deltas) as well as a trackpad swipe.
+final class SidewaysScrollView: NSScrollView {
+    override func scrollWheel(with event: NSEvent) {
+        let delta = abs(event.scrollingDeltaX) > abs(event.scrollingDeltaY) ? -event.scrollingDeltaX : -event.scrollingDeltaY
+        guard let doc = documentView else { return }
+        let maxX = max(0, doc.frame.width - contentView.bounds.width)
+        var origin = contentView.bounds.origin
+        origin.x = min(max(origin.x + delta * (event.hasPreciseScrollingDeltas ? 1 : 12), 0), maxX)
+        contentView.scroll(to: origin)
+        reflectScrolledClipView(contentView)
+        (superview as? TabStripView)?.refreshHover()
     }
 }
