@@ -1,6 +1,7 @@
 Installed from AINCRAD Settings › Browser, or unzip and drag to Applications.
 
-- AINCRAD HUD start page, no tagline
-- Settings are a page of AINCRAD Settings (and the same page standalone)
-- Ad/tracker blocking, https upgrades, link cleaning, reader mode, dark pages, custom CSS, search engines, user agent, popup and autoplay control
-- Signed with a development certificate, not notarised
+- Launcher-style tabs with ✕, middle-click close, right-click menu, pinning
+- Full keyboard shortcuts and menus (Help › Keyboard Shortcuts)
+- Bigger default window; Compact/Large options
+- Its own theme, if you want one (default: follows AINCRAD)
+- Signed with a development certificate, not notarised (right-click Open if you download the zip manually)

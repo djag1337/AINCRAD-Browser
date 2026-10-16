@@ -15,22 +15,22 @@ final class BrowserViewController: NSViewController, NSSearchFieldDelegate, WKNa
     private let toolbar = NSVisualEffectView()
     /// The theme's panel colour, laid over the blur (a visual effect view draws over its own layer colour).
     private let toolbarTint = NSView()
-    private let tabControl = SolidSegmentedControl()
+    private let tabControl = TabStripView()
     /// https links we swapped in for http ones, so a site without https can fall back to the original.
     private var upgradedFrom: [String: URL] = [:]
     private var noUpgrade = Set<String>()
     private let addressField = NSSearchField()
     private let progress = NSProgressIndicator()
-    private let backButton = NSButton()
-    private let forwardButton = NSButton()
-    private let reloadButton = NSButton()
-    private let sidebarButton = NSButton()
-    private let addTabButton = NSButton()
-    private let bookmarkButton = NSButton()
-    private let shareButton = NSButton()
-    private let downloadsButton = NSButton()
+    private let backButton = CircleButton()
+    private let forwardButton = CircleButton()
+    private let reloadButton = CircleButton()
+    private let sidebarButton = CircleButton()
+    private let addTabButton = CircleButton()
+    private let bookmarkButton = CircleButton()
+    private let shareButton = CircleButton()
+    private let downloadsButton = CircleButton()
     /// Opens the AINCRAD launcher (shown only when AINCRAD is installed).
-    private let aincradButton = NSButton()
+    private let aincradButton = CircleButton()
     private let privacyBadge = NSTextField(labelWithString: "PRIVATE")
     private let productLabel = NSTextField(labelWithString: "AINCRAD // BROWSER")
     private let accentRule = NSView()
@@ -94,13 +94,12 @@ final class BrowserViewController: NSViewController, NSSearchFieldDelegate, WKNa
         toolbarTint.layer?.backgroundColor = (dark ? AINCRADTheme.panel.withAlphaComponent(1) : AINCRADTheme.panel).cgColor
         toolbar.layer?.borderColor = AINCRADTheme.panelBorder.cgColor
         for button in [sidebarButton, backButton, forwardButton, reloadButton, bookmarkButton, shareButton, downloadsButton, addTabButton, aincradButton] {
-            AINCRADTheme.styleCircle(button)
+            button.restyle()
         }
         aincradButton.image = AINCRADTheme.makeMark(size: 18)
         addressField.layer?.borderColor = AINCRADTheme.accent.withAlphaComponent(0.72).cgColor
         addressField.font = AINCRADTheme.bodyFont(size: 14)
-        tabControl.selectedSegmentBezelColor = AINCRADTheme.tabBezel
-        tabControl.font = AINCRADTheme.bodyFont(size: 13, weight: .semibold)
+        tabControl.applyTheme()
         privacyBadge.textColor = AINCRADTheme.accent
         privacyBadge.font = AINCRADTheme.displayFont(size: 9)
         productLabel.font = AINCRADTheme.displayFont(size: 11)
@@ -147,14 +146,15 @@ final class BrowserViewController: NSViewController, NSSearchFieldDelegate, WKNa
         toolbar.layer?.borderColor = NSColor.white.withAlphaComponent(0.8).cgColor
         toolbar.layer?.borderWidth = 1
 
-        func symbolButton(_ button: NSButton, symbol: String, action: Selector, help: String) {
+        func symbolButton(_ button: CircleButton, symbol: String, action: Selector, help: String) {
             button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: help)
             button.bezelStyle = .texturedRounded; button.isBordered = false
             button.target = self; button.action = action; button.toolTip = help
             button.translatesAutoresizingMaskIntoConstraints = false
-            button.widthAnchor.constraint(equalToConstant: 32).isActive = true
-            button.heightAnchor.constraint(equalToConstant: 30).isActive = true
-            AINCRADTheme.styleCircle(button)
+            button.widthAnchor.constraint(equalToConstant: 36).isActive = true
+            button.heightAnchor.constraint(equalToConstant: 36).isActive = true
+            button.imagePosition = .imageOnly
+            (button as? CircleButton)?.restyle()
         }
         symbolButton(sidebarButton, symbol: "sidebar.left", action: #selector(toggleSidebarAction), help: "Toggle Sidebar")
         symbolButton(backButton, symbol: "chevron.left", action: #selector(goBack), help: "Back")
@@ -179,11 +179,9 @@ final class BrowserViewController: NSViewController, NSSearchFieldDelegate, WKNa
         addressField.layer?.borderColor = AINCRADTheme.accent.withAlphaComponent(0.72).cgColor
         addressField.font = AINCRADTheme.bodyFont(size: 14)
 
-        tabControl.segmentStyle = .rounded
-        tabControl.selectedSegmentBezelColor = AINCRADTheme.tabBezel
-        tabControl.font = AINCRADTheme.bodyFont(size: 13, weight: .semibold)
-        tabControl.trackingMode = .selectOne
-        tabControl.target = self; tabControl.action = #selector(tabSelected)
+        tabControl.onSelect = { [weak self] in self?.selectTab(at: $0) }
+        tabControl.onClose = { [weak self] in self?.closeTab(at: $0) }
+        tabControl.menuFor = { [weak self] in self?.tabMenu(for: $0) }
         tabControl.translatesAutoresizingMaskIntoConstraints = false
 
         progress.style = .bar; progress.isIndeterminate = false; progress.minValue = 0; progress.maxValue = 1
@@ -213,13 +211,13 @@ final class BrowserViewController: NSViewController, NSSearchFieldDelegate, WKNa
         [nav, addressField, right, productLabel, tabControl, addTabButton, progress, accentRule].forEach(toolbar.addSubview)
 
         NSLayoutConstraint.activate([
-            toolbar.topAnchor.constraint(equalTo: mainView.topAnchor), toolbar.leadingAnchor.constraint(equalTo: mainView.leadingAnchor), toolbar.trailingAnchor.constraint(equalTo: mainView.trailingAnchor), toolbar.heightAnchor.constraint(equalToConstant: 98),
-            nav.leadingAnchor.constraint(equalTo: toolbar.leadingAnchor, constant: 76), nav.topAnchor.constraint(equalTo: toolbar.topAnchor, constant: 12),
-            addressField.leadingAnchor.constraint(equalTo: nav.trailingAnchor, constant: 8), addressField.topAnchor.constraint(equalTo: toolbar.topAnchor, constant: 10), addressField.heightAnchor.constraint(equalToConstant: 30),
+            toolbar.topAnchor.constraint(equalTo: mainView.topAnchor), toolbar.leadingAnchor.constraint(equalTo: mainView.leadingAnchor), toolbar.trailingAnchor.constraint(equalTo: mainView.trailingAnchor), toolbar.heightAnchor.constraint(equalToConstant: 102),
+            nav.leadingAnchor.constraint(equalTo: toolbar.leadingAnchor, constant: 76), nav.topAnchor.constraint(equalTo: toolbar.topAnchor, constant: 10),
+            addressField.leadingAnchor.constraint(equalTo: nav.trailingAnchor, constant: 8), addressField.topAnchor.constraint(equalTo: toolbar.topAnchor, constant: 10), addressField.heightAnchor.constraint(equalToConstant: 36),
             right.leadingAnchor.constraint(equalTo: addressField.trailingAnchor, constant: 8), right.trailingAnchor.constraint(equalTo: toolbar.trailingAnchor, constant: -12), right.centerYAnchor.constraint(equalTo: addressField.centerYAnchor),
             addressField.widthAnchor.constraint(greaterThanOrEqualToConstant: 280),
-            productLabel.leadingAnchor.constraint(equalTo: toolbar.leadingAnchor, constant: 14), productLabel.centerYAnchor.constraint(equalTo: tabControl.centerYAnchor), productLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: 132),
-            tabControl.leadingAnchor.constraint(equalTo: productLabel.trailingAnchor, constant: 8), tabControl.trailingAnchor.constraint(equalTo: addTabButton.leadingAnchor, constant: -6), tabControl.topAnchor.constraint(equalTo: addressField.bottomAnchor, constant: 9), tabControl.heightAnchor.constraint(equalToConstant: 31),
+            productLabel.leadingAnchor.constraint(equalTo: toolbar.leadingAnchor, constant: 14), productLabel.centerYAnchor.constraint(equalTo: tabControl.centerYAnchor), productLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: 132), productLabel.widthAnchor.constraint(lessThanOrEqualToConstant: 150),
+            tabControl.leadingAnchor.constraint(equalTo: productLabel.trailingAnchor, constant: 8), tabControl.trailingAnchor.constraint(equalTo: addTabButton.leadingAnchor, constant: -6), tabControl.topAnchor.constraint(equalTo: addressField.bottomAnchor, constant: 11), tabControl.heightAnchor.constraint(equalToConstant: 32),
             addTabButton.trailingAnchor.constraint(equalTo: toolbar.trailingAnchor, constant: -10), addTabButton.centerYAnchor.constraint(equalTo: tabControl.centerYAnchor),
             progress.leadingAnchor.constraint(equalTo: toolbar.leadingAnchor), progress.trailingAnchor.constraint(equalTo: toolbar.trailingAnchor), progress.bottomAnchor.constraint(equalTo: toolbar.bottomAnchor), progress.heightAnchor.constraint(equalToConstant: 2),
             accentRule.leadingAnchor.constraint(equalTo: toolbar.leadingAnchor), accentRule.trailingAnchor.constraint(equalTo: toolbar.trailingAnchor), accentRule.bottomAnchor.constraint(equalTo: toolbar.bottomAnchor), accentRule.heightAnchor.constraint(equalToConstant: 1)
@@ -254,14 +252,91 @@ final class BrowserViewController: NSViewController, NSSearchFieldDelegate, WKNa
     func newTab() { createTab(state: nil, select: true, blank: BrowserPrefsModel.shared.prefs.newTabPage == "blank"); focusAddressBar() }
     @objc private func addTabAction() { newTab() }
 
-    func closeCurrentTab() {
-        guard !tabs.isEmpty else { return }
+    var currentIndex: Int { selectedIndex }
+    func closeCurrentTab() { closeTab(at: selectedIndex) }
+
+    func closeTab(at index: Int) {
+        guard tabs.indices.contains(index) else { return }
         if tabs.count == 1 { view.window?.performClose(nil); return }
-        let removed = tabs.remove(at: selectedIndex)
-        if !privateMode { BrowserStore.shared.rememberClosed(removed.state) }
+        let removed = tabs.remove(at: index)
+        removed.webView.stopLoading()
+        if !privateMode, removed.webView.url?.scheme != "glass" { BrowserStore.shared.rememberClosed(removed.state) }
+        if index < selectedIndex { selectedIndex -= 1 } else if index == selectedIndex { selectedIndex = min(selectedIndex, tabs.count - 1) }
+        rebuildTabControl(); selectTab(at: selectedIndex); notifyStateChanged()
+    }
+
+    func closeOtherTabs(keeping index: Int) {
+        guard tabs.indices.contains(index) else { return }
+        let keep = tabs[index]
+        for tab in tabs where tab !== keep && !tab.pinned {
+            tab.webView.stopLoading()
+            if !privateMode, tab.webView.url?.scheme != "glass" { BrowserStore.shared.rememberClosed(tab.state) }
+        }
+        tabs = tabs.filter { $0 === keep || $0.pinned }
+        selectedIndex = tabs.firstIndex { $0 === keep } ?? 0
+        rebuildTabControl(); selectTab(at: selectedIndex); notifyStateChanged()
+    }
+
+    func closeTabsToRight(of index: Int) {
+        guard tabs.indices.contains(index), index < tabs.count - 1 else { return }
+        for tab in tabs[(index + 1)...] where !tab.pinned {
+            tab.webView.stopLoading()
+            if !privateMode, tab.webView.url?.scheme != "glass" { BrowserStore.shared.rememberClosed(tab.state) }
+        }
+        tabs = Array(tabs[...index]) + tabs[(index + 1)...].filter(\.pinned)
         selectedIndex = min(selectedIndex, tabs.count - 1)
         rebuildTabControl(); selectTab(at: selectedIndex); notifyStateChanged()
     }
+
+    private func tabMenu(for index: Int) -> NSMenu? {
+        guard tabs.indices.contains(index) else { return nil }
+        let menu = NSMenu()
+        func add(_ title: String, _ action: @escaping () -> Void) {
+            let item = NSMenuItem(title: title, action: #selector(runMenuAction(_:)), keyEquivalent: ""); item.target = self
+            item.representedObject = action; menu.addItem(item)
+        }
+        add("Close Tab") { [weak self] in self?.closeTab(at: index) }
+        if tabs.count > 1 { add("Close Other Tabs") { [weak self] in self?.closeOtherTabs(keeping: index) } }
+        if index < tabs.count - 1 { add("Close Tabs to the Right") { [weak self] in self?.closeTabsToRight(of: index) } }
+        menu.addItem(.separator())
+        add(tabs[index].pinned ? "Unpin Tab" : "Pin Tab") { [weak self] in self?.togglePin(at: index) }
+        add("Duplicate Tab") { [weak self] in
+            guard let self, self.tabs.indices.contains(index) else { return }
+            self.createTab(state: self.tabs[index].state, select: true)
+        }
+        add("Reload Tab") { [weak self] in self?.tabs[safe: index]?.webView.reload() }
+        return menu
+    }
+
+    @objc private func runMenuAction(_ sender: NSMenuItem) { (sender.representedObject as? () -> Void)?() }
+
+    private func togglePin(at index: Int) {
+        guard tabs.indices.contains(index) else { return }
+        tabs[index].pinned.toggle()
+        // Pinned tabs sit together at the left.
+        let current = tabs[selectedIndex]
+        tabs = tabs.filter(\.pinned) + tabs.filter { !$0.pinned }
+        selectedIndex = tabs.firstIndex { $0 === current } ?? 0
+        rebuildTabControl(); notifyStateChanged()
+    }
+
+    // MARK: Keyboard-driven navigation
+
+    func nextTab(by delta: Int) {
+        guard tabs.count > 1 else { return }
+        selectTab(at: (selectedIndex + delta + tabs.count) % tabs.count)
+    }
+
+    /// ⌘1…⌘8 pick that tab; ⌘9 picks the last one.
+    func selectTabNumber(_ number: Int) {
+        guard !tabs.isEmpty else { return }
+        selectTab(at: number >= 9 ? tabs.count - 1 : min(number - 1, tabs.count - 1))
+    }
+
+    func goBackAction() { if tabs[selectedIndex].webView.canGoBack { tabs[selectedIndex].webView.goBack() } }
+    func goForwardAction() { if tabs[selectedIndex].webView.canGoForward { tabs[selectedIndex].webView.goForward() } }
+    func reloadAction(hard: Bool) { hard ? tabs[selectedIndex].webView.reloadFromOrigin() : tabs[selectedIndex].webView.reload() }
+    func stopAction() { tabs[selectedIndex].webView.stopLoading() }
 
     func reopenClosedTab() {
         guard !privateMode, let state = BrowserStore.shared.popClosed() else { return }
@@ -273,10 +348,7 @@ final class BrowserViewController: NSViewController, NSSearchFieldDelegate, WKNa
         createTab(state: tabs[selectedIndex].state, select: true)
     }
 
-    func togglePinCurrentTab() {
-        tabs[selectedIndex].pinned.toggle()
-        rebuildTabControl(); notifyStateChanged()
-    }
+    func togglePinCurrentTab() { togglePin(at: selectedIndex) }
 
     func moveCurrentTab(by offset: Int) {
         let destination = selectedIndex + offset
@@ -299,8 +371,6 @@ final class BrowserViewController: NSViewController, NSSearchFieldDelegate, WKNa
         selectTab(at: index)
     }
 
-    @objc private func tabSelected() { selectTab(at: tabControl.selectedSegment) }
-
     private func selectTab(at index: Int) {
         guard tabs.indices.contains(index), isViewLoaded else { return }
         selectedIndex = index
@@ -312,7 +382,7 @@ final class BrowserViewController: NSViewController, NSSearchFieldDelegate, WKNa
         tab.webView.translatesAutoresizingMaskIntoConstraints = false
         webContainer.addSubview(tab.webView)
         NSLayoutConstraint.activate([tab.webView.topAnchor.constraint(equalTo: webContainer.topAnchor), tab.webView.bottomAnchor.constraint(equalTo: webContainer.bottomAnchor), tab.webView.leadingAnchor.constraint(equalTo: webContainer.leadingAnchor), tab.webView.trailingAnchor.constraint(equalTo: webContainer.trailingAnchor)])
-        tabControl.selectedSegment = index
+        tabControl.select(index)
         observe(tab)
         // A focused address field won't take the new URL, so real pages take focus (start pages keep the field).
         if addressField.currentEditorIsActive, tab.webView.url?.scheme != "glass" { view.window?.makeFirstResponder(tab.webView) }
@@ -333,7 +403,8 @@ final class BrowserViewController: NSViewController, NSSearchFieldDelegate, WKNa
 
     private func updateTitle(for tab: BrowserTab?) {
         guard let tab else { return }
-        tab.title = tab.webView.title?.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty ?? "Untitled"
+        tab.title = tab.webView.url?.scheme == "glass" || tab.webView.url == nil
+            ? "New Tab" : (tab.webView.title?.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty ?? tab.webView.url?.host ?? "Untitled")
         rebuildTabControl()
         if tab === tabs[selectedIndex] { view.window?.title = privateMode ? "\(tab.title) — Private — AINCRAD Browser" : "\(tab.title) — AINCRAD Browser" }
         notifyStateChanged()
@@ -341,15 +412,7 @@ final class BrowserViewController: NSViewController, NSSearchFieldDelegate, WKNa
 
     private func rebuildTabControl() {
         guard isViewLoaded else { return }
-        tabControl.segmentCount = tabs.count
-        for (index, tab) in tabs.enumerated() {
-            let prefix = tab.pinned ? "◆ " : ""
-            tabControl.setLabel(prefix + String(tab.title.prefix(28)), forSegment: index)
-            tabControl.setWidth(max(110, min(220, CGFloat(tab.title.count * 7 + 44))), forSegment: index)
-            tabControl.setToolTip(tab.title, forSegment: index)
-            tabControl.setImage(tab.icon, forSegment: index)
-        }
-        if tabs.indices.contains(selectedIndex) { tabControl.selectedSegment = selectedIndex }
+        tabControl.reload(tabs.map { .init(title: $0.title, icon: $0.icon, pinned: $0.pinned) }, selected: selectedIndex)
     }
 
     private func updateChrome() {
@@ -410,10 +473,20 @@ final class BrowserViewController: NSViewController, NSSearchFieldDelegate, WKNa
         DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in self?.bookmarkButton.image = original }
     }
 
+    private var lastFind = ""
+    func findAgain(backwards: Bool) {
+        guard !lastFind.isEmpty else { showFind(); return }
+        let configuration = WKFindConfiguration(); configuration.wraps = true; configuration.backwards = backwards
+        tabs[selectedIndex].webView.find(lastFind, configuration: configuration) { _ in }
+    }
+
     func showFind() {
         let alert = NSAlert(); alert.messageText = "Find on Page"; alert.addButton(withTitle: "Find"); alert.addButton(withTitle: "Cancel")
         let field = NSSearchField(frame: NSRect(x: 0, y: 0, width: 280, height: 26)); alert.accessoryView = field
+        field.stringValue = lastFind
+        alert.window.initialFirstResponder = field
         if alert.runModal() == .alertFirstButtonReturn {
+            lastFind = field.stringValue
             let configuration = WKFindConfiguration(); configuration.wraps = true
             tabs[selectedIndex].webView.find(field.stringValue, configuration: configuration) { _ in }
         }
@@ -547,52 +620,6 @@ extension Notification.Name {
     static let browserWindowStateChanged = Notification.Name("AINCRADBrowserWindowStateChanged")
 }
 
-/// AppKit darkens a segmented control's selected colour (the pink theme came out purple),
-/// so the tab strip draws its own track and selection in the exact theme colours.
-final class SolidSegmentedControl: NSSegmentedControl {
-    override class var cellClass: AnyClass? { get { SolidSegmentedCell.self } set {} }
-    override var allowsVibrancy: Bool { false }
-}
-
-final class SolidSegmentedCell: NSSegmentedCell {
-    override func draw(withFrame cellFrame: NSRect, in controlView: NSView) {
-        let height: CGFloat = 20
-        var x = cellFrame.minX + 2
-        let y = cellFrame.midY - height / 2
-        AINCRADTheme.footer.setFill()
-        let total = (0..<segmentCount).reduce(CGFloat(0)) { $0 + width(forSegment: $1) }
-        NSBezierPath(roundedRect: NSRect(x: x, y: y, width: total, height: height), xRadius: 5, yRadius: 5).fill()
-        for i in 0..<segmentCount {
-            let rect = NSRect(x: x, y: y, width: width(forSegment: i), height: height)
-            if i == selectedSegment {
-                AINCRADTheme.tabBezel.setFill()
-                NSBezierPath(roundedRect: rect, xRadius: 5, yRadius: 5).fill()
-            } else if i > 0 && i - 1 != selectedSegment {
-                AINCRADTheme.panelText.withAlphaComponent(0.15).setFill()
-                NSRect(x: rect.minX, y: rect.minY + 4, width: 1, height: height - 8).fill()
-            }
-            drawSegment(i, inFrame: rect, with: controlView)
-            x += rect.width
-        }
-    }
-
-    override func drawSegment(_ segment: Int, inFrame frame: NSRect, with controlView: NSView) {
-        let selected = segment == selectedSegment
-        var textX = frame.minX + 8
-        let label = label(forSegment: segment) ?? ""
-        let attrs: [NSAttributedString.Key: Any] = [.font: font ?? .systemFont(ofSize: 13),
-                                                    .foregroundColor: selected ? AINCRADTheme.accentText : AINCRADTheme.panelText]
-        let size = label.size(withAttributes: attrs)
-        var contentWidth = size.width
-        let image = image(forSegment: segment)
-        if image != nil { contentWidth += 20 }
-        textX = max(textX, frame.midX - contentWidth / 2)
-        if let image {
-            image.draw(in: NSRect(x: textX, y: frame.midY - 7, width: 14, height: 14))
-            textX += 20
-        }
-        let maxWidth = frame.maxX - 8 - textX
-        (label as NSString).draw(with: NSRect(x: textX, y: frame.midY - size.height / 2, width: maxWidth, height: size.height),
-                                 options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine], attributes: attrs)
-    }
+extension Array {
+    subscript(safe index: Int) -> Element? { indices.contains(index) ? self[index] : nil }
 }

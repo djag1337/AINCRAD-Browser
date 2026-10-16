@@ -145,6 +145,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         preferencesController = controller; controller.showWindow(nil); controller.window?.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true)
     }
     @objc private func toggleReader(_ sender: Any?) { currentBrowser()?.toggleReader() }
+    @objc private func goBackMenu(_ sender: Any?) { currentBrowser()?.goBackAction() }
+    @objc private func goForwardMenu(_ sender: Any?) { currentBrowser()?.goForwardAction() }
+    @objc private func reloadMenu(_ sender: Any?) { currentBrowser()?.reloadAction(hard: false) }
+    @objc private func hardReloadMenu(_ sender: Any?) { currentBrowser()?.reloadAction(hard: true) }
+    @objc private func stopMenu(_ sender: Any?) { currentBrowser()?.stopAction() }
+    @objc private func nextTabMenu(_ sender: Any?) { currentBrowser()?.nextTab(by: 1) }
+    @objc private func previousTabMenu(_ sender: Any?) { currentBrowser()?.nextTab(by: -1) }
+    @objc private func selectTabMenu(_ sender: NSMenuItem) { currentBrowser()?.selectTabNumber(sender.tag) }
+    @objc private func closeOthersMenu(_ sender: Any?) { if let b = currentBrowser() { b.closeOtherTabs(keeping: b.currentIndex) } }
+    @objc private func closeRightMenu(_ sender: Any?) { if let b = currentBrowser() { b.closeTabsToRight(of: b.currentIndex) } }
+    @objc private func findNextMenu(_ sender: Any?) { currentBrowser()?.findAgain(backwards: false) }
+    @objc private func findPreviousMenu(_ sender: Any?) { currentBrowser()?.findAgain(backwards: true) }
+    @objc private func closeWindowMenu(_ sender: Any?) { NSApp.keyWindow?.performClose(nil) }
+    @objc private func showShortcuts(_ sender: Any?) {
+        let alert = NSAlert()
+        alert.messageText = "Keyboard shortcuts"
+        alert.informativeText = """
+        ⌘T new tab · ⌘W close tab · ⇧⌘T reopen closed tab · ⇧⌘W close window
+        ⌃Tab / ⇧⌘] next tab · ⌃⇧Tab / ⇧⌘[ previous tab · ⌘1…⌘8 tab by number · ⌘9 last tab
+        ⌘L address bar · ⌘R reload · ⌥⌘R reload without cache · ⌘. stop · ⌘[ back · ⌘] forward
+        ⌘F find · ⌘G next match · ⇧⌘G previous match · ⇧⌘R reader mode
+        ⌘D bookmark · ⌘B bookmarks · ⌘Y history · ⌘J downloads · ⌘S sidebar
+        ⌘+ ⌘- ⌘0 zoom · ⌘, settings (AINCRAD Settings › Browser)
+        Middle-click or the ✕ closes a tab; right-click a tab for more.
+        """
+        alert.runModal()
+    }
     @objc private func openPasswords(_ sender: Any?) {
         NSWorkspace.shared.open(URL(fileURLWithPath: "/System/Applications/Passwords.app"))
     }
@@ -183,6 +210,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         file.addItem(withTitle: "Close Tab", action: #selector(closeTab(_:)), keyEquivalent: "w").target = self
         let reopen = file.addItem(withTitle: "Reopen Closed Tab", action: #selector(reopenTab(_:)), keyEquivalent: "t")
         reopen.keyEquivalentModifierMask = [.command, .shift]; reopen.target = self
+        add(file, "Close Window", #selector(closeWindowMenu(_:)), "w", [.command, .shift])
         file.addItem(.separator())
         file.addItem(withTitle: "Save Page as PDF…", action: #selector(savePDF(_:)), keyEquivalent: "").target = self
         file.addItem(withTitle: "Print…", action: #selector(printPage(_:)), keyEquivalent: "p").target = self
@@ -198,6 +226,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         edit.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
         edit.addItem(.separator())
         edit.addItem(withTitle: "Find", action: #selector(find(_:)), keyEquivalent: "f").target = self
+        let findNext = NSMenuItem(title: "Find Next", action: #selector(findNextMenu(_:)), keyEquivalent: "g"); findNext.target = self; edit.addItem(findNext)
+        let findPrev = NSMenuItem(title: "Find Previous", action: #selector(findPreviousMenu(_:)), keyEquivalent: "g"); findPrev.keyEquivalentModifierMask = [.command, .shift]; findPrev.target = self; edit.addItem(findPrev)
         edit.addItem(withTitle: "Copy Page Link", action: #selector(copyLink(_:)), keyEquivalent: "").target = self
 
         let viewItem = NSMenuItem(); main.addItem(viewItem)
@@ -212,16 +242,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         view.addItem(withTitle: "Zoom Out", action: #selector(zoomOut(_:)), keyEquivalent: "-").target = self
         view.addItem(withTitle: "Enter Full Screen", action: #selector(NSWindow.toggleFullScreen(_:)), keyEquivalent: "f").keyEquivalentModifierMask = [.control, .command]
 
+        func add(_ menu: NSMenu, _ title: String, _ action: Selector, _ key: String, _ mods: NSEvent.ModifierFlags = [.command], tag: Int = 0) {
+            let item = menu.addItem(withTitle: title, action: action, keyEquivalent: key)
+            item.keyEquivalentModifierMask = mods; item.target = self; item.tag = tag
+        }
         let tabItem = NSMenuItem(); main.addItem(tabItem)
         let tab = NSMenu(title: "Tab"); tabItem.submenu = tab
+        add(tab, "Next Tab", #selector(nextTabMenu(_:)), "]", [.command, .shift])
+        add(tab, "Previous Tab", #selector(previousTabMenu(_:)), "[", [.command, .shift])
+        add(tab, "Next Tab (Control-Tab)", #selector(nextTabMenu(_:)), "\t", [.control])
+        add(tab, "Previous Tab (Control-Shift-Tab)", #selector(previousTabMenu(_:)), "\t", [.control, .shift])
+        tab.addItem(.separator())
+        for n in 1...9 { add(tab, n == 9 ? "Last Tab" : "Tab \(n)", #selector(selectTabMenu(_:)), "\(n)", [.command], tag: n) }
+        tab.addItem(.separator())
         tab.addItem(withTitle: "Duplicate Tab", action: #selector(duplicateTab(_:)), keyEquivalent: "").target = self
         tab.addItem(withTitle: "Pin or Unpin Tab", action: #selector(togglePin(_:)), keyEquivalent: "").target = self
+        tab.addItem(withTitle: "Close Other Tabs", action: #selector(closeOthersMenu(_:)), keyEquivalent: "").target = self
+        tab.addItem(withTitle: "Close Tabs to the Right", action: #selector(closeRightMenu(_:)), keyEquivalent: "").target = self
         tab.addItem(.separator())
-        let left = tab.addItem(withTitle: "Move Tab Left", action: #selector(moveTabLeft(_:)), keyEquivalent: "["); left.keyEquivalentModifierMask = [.command, .shift]; left.target = self
-        let right = tab.addItem(withTitle: "Move Tab Right", action: #selector(moveTabRight(_:)), keyEquivalent: "]"); right.keyEquivalentModifierMask = [.command, .shift]; right.target = self
+        add(tab, "Move Tab Left", #selector(moveTabLeft(_:)), "[", [.command, .option])
+        add(tab, "Move Tab Right", #selector(moveTabRight(_:)), "]", [.command, .option])
 
         let historyItem = NSMenuItem(); main.addItem(historyItem)
         let history = NSMenu(title: "History"); historyItem.submenu = history
+        add(history, "Back", #selector(goBackMenu(_:)), "[")
+        add(history, "Forward", #selector(goForwardMenu(_:)), "]")
+        add(history, "Reload Page", #selector(reloadMenu(_:)), "r")
+        add(history, "Reload Without Cache", #selector(hardReloadMenu(_:)), "r", [.command, .option])
+        add(history, "Stop Loading", #selector(stopMenu(_:)), ".")
+        history.addItem(.separator())
         history.addItem(withTitle: "Show History", action: #selector(showHistory(_:)), keyEquivalent: "y").target = self
         history.addItem(withTitle: "Show Downloads", action: #selector(showDownloads(_:)), keyEquivalent: "j").target = self
 
@@ -241,6 +290,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let window = NSMenu(title: "Window"); windowItem.submenu = window; NSApp.windowsMenu = window
         window.addItem(withTitle: "Minimize", action: #selector(NSWindow.miniaturize(_:)), keyEquivalent: "m")
         window.addItem(withTitle: "Zoom", action: #selector(NSWindow.performZoom(_:)), keyEquivalent: "")
+
+        let helpItem = NSMenuItem(); main.addItem(helpItem)
+        let help = NSMenu(title: "Help"); helpItem.submenu = help; NSApp.helpMenu = help
+        help.addItem(withTitle: "Keyboard Shortcuts", action: #selector(showShortcuts(_:)), keyEquivalent: "/").target = self
     }
 }
 

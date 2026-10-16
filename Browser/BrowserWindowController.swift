@@ -7,7 +7,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
     init(privateMode: Bool, restoredState: WindowState?) {
         browser = BrowserViewController(privateMode: privateMode, restoredState: restoredState)
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 1180, height: 760),
+            contentRect: BrowserWindowController.defaultFrame(),
             styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
             backing: .buffered,
             defer: false
@@ -16,16 +16,36 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         window.titleVisibility = .hidden
         window.titlebarAppearsTransparent = true
         window.isMovableByWindowBackground = false
-        window.minSize = NSSize(width: 720, height: 480)
+        window.minSize = NSSize(width: 760, height: 520)
         window.backgroundColor = .windowBackgroundColor
         window.tabbingMode = .disallowed
         window.contentViewController = browser
+        // Attaching a view controller shrinks the window to the view's tiny natural size, so set the real one after.
+        window.setContentSize(BrowserWindowController.defaultFrame().size)
         super.init(window: window)
         window.delegate = self
-        if let rawFrame = restoredState?.frame {
+        if BrowserPrefsModel.shared.prefs.rememberWindowSize, !BrowserWindowController.resetOldFrames, let rawFrame = restoredState?.frame {
             let restored = NSRectFromString(rawFrame)
             if NSScreen.screens.contains(where: { $0.visibleFrame.intersects(restored) }) { window.setFrame(restored, display: false) } else { window.center() }
         } else { window.center() }
+    }
+
+    /// Frames saved before the bigger default (version 0.8) are ignored once, so everyone gets the new size.
+    private static let resetOldFrames: Bool = {
+        let key = "didResetWindowFramesV08"
+        if UserDefaults.standard.bool(forKey: key) { return false }
+        UserDefaults.standard.set(true, forKey: key)
+        return true
+    }()
+
+    /// The size a new window opens at: about 80% of the screen by default (never smaller than 1100×720), or compact/large.
+    static func defaultFrame() -> NSRect {
+        let screen = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
+        switch BrowserPrefsModel.shared.prefs.windowSize {
+        case "compact": return NSRect(x: 0, y: 0, width: min(1000, screen.width), height: min(680, screen.height))
+        case "large": return NSRect(x: 0, y: 0, width: min(1440, screen.width * 0.94), height: min(940, screen.height * 0.94))
+        default: return NSRect(x: 0, y: 0, width: min(max(1100, screen.width * 0.8), screen.width), height: min(max(720, screen.height * 0.8), screen.height))
+        }
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }

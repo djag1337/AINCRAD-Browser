@@ -42,6 +42,7 @@ enum AINCRADTheme {
             CTFontManagerRegisterFontsForURL(url as CFURL, .process, nil)
         }
         reload()
+        NotificationCenter.default.addObserver(forName: .browserPrefsChanged, object: nil, queue: .main) { _ in reload() }
         DistributedNotificationCenter.default().addObserver(forName: Notification.Name("com.djag.aincrad.themeChanged"), object: nil, queue: .main) { _ in
             reload()
         }
@@ -52,9 +53,10 @@ enum AINCRADTheme {
     static func reload() {
         let before = signature
         var colors: [String: String] = [:], font: [String: Any] = [:]
-        if let settings = json(aincradFolder.appendingPathComponent("settings.json")) {
+        if let settings = json(aincradFolder.appendingPathComponent("settings.json")) ?? (BrowserPrefsModel.shared.prefs.theme != "follow" ? [:] : nil) {
             playerName = (settings["playerName"] as? String) ?? ""
-            let id = (settings["theme"] as? String) ?? "aincrad-classic"
+            let chosen = BrowserPrefsModel.shared.prefs.theme
+            let id = chosen != "follow" ? chosen : ((settings["theme"] as? String) ?? "aincrad-classic")
             if let theme = json(aincradFolder.appendingPathComponent("themes/\(id).json")) {
                 colors = (theme["colors"] as? [String: String]) ?? [:]
                 font = (theme["font"] as? [String: Any]) ?? [:]

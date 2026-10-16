@@ -16,6 +16,31 @@ All of these live in one settings page. With AINCRAD installed it's **AINCRAD Se
 - **Start page**: HUD brackets, favourites as circles, recent sites, a clock, all optional; new tabs can open blank
 - Pinned tabs, tab reordering and duplication, session restore (optional), private windows
 
+## Keyboard shortcuts
+
+| | |
+|---|---|
+| New tab / close tab / reopen closed tab | ⌘T / ⌘W / ⇧⌘T |
+| Next / previous tab | ⌃Tab or ⇧⌘] / ⌃⇧Tab or ⇧⌘[ |
+| Tab by number / last tab | ⌘1…⌘8 / ⌘9 |
+| Address bar, reload, hard reload, stop | ⌘L, ⌘R, ⌥⌘R, ⌘. |
+| Back / forward | ⌘[ / ⌘] |
+| Find, next, previous | ⌘F, ⌘G, ⇧⌘G |
+| Reader mode | ⇧⌘R |
+| Bookmark, bookmarks, history, downloads, sidebar | ⌘D, ⌘B, ⌘Y, ⌘J, ⌘S |
+| Zoom | ⌘+, ⌘-, ⌘0 |
+| Close window | ⇧⌘W |
+
+Tabs have a ✕ on the selected or hovered tab; middle-click closes; right-click offers Close Others, Close to the Right, Pin and Duplicate. Help › Keyboard Shortcuts lists them in the app.
+
+## Looks and themes
+
+By default the browser wears AINCRAD's current theme, so the launcher, widgets and browser match. In Settings › Browser › Look you can give the browser its own theme, which it keeps whatever the launcher does. New windows open at about 80% of the screen (or Compact / Large).
+
+## Notarisation
+
+Releases are currently signed with a development certificate and **not notarised**. Installed through AINCRAD's switch they open normally. If you download the zip in a web browser instead, macOS may say the developer can't be verified: right-click the app and choose Open once. `scripts/release.sh` notarises automatically when a Developer ID certificate and a `NOTARY_PROFILE` are available (see the header of the script).
+
 ## Works with AINCRAD
 
 AINCRAD Browser is its own app and works fine alone. When [AINCRAD](https://github.com/djag1337/AINCRAD)
