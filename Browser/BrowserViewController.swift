@@ -41,12 +41,14 @@ final class BrowserViewController: NSViewController, NSSearchFieldDelegate, WKNa
     private let blurBand = NSVisualEffectView()
     private var blurHeight: NSLayoutConstraint?
     /// The floating capsule hugs the button row with a little padding.
-    private var bandHeight: CGFloat { AINCRADTheme.buttonSize + 22 + 2 * blurFeather }
+    private var contentTop: CGFloat { 4 }
+    private var contentHeight: CGFloat { toolbarHeight - 4 - contentTop }
+    private var bandHeight: CGFloat { contentHeight + 2 * blurFeather }
 
     /// A soft mask: full strength behind the buttons, fading smoothly to nothing on every side.
     private func updateBlurShape() {
         let feather = blurFeather
-        let r = ((AINCRADTheme.buttonSize + 22) / 2).rounded()
+        let r = (contentHeight / 2).rounded()
         let cap = r + feather
         let size = 2 * cap + 2
         let steps = 36
@@ -120,16 +122,17 @@ final class BrowserViewController: NSViewController, NSSearchFieldDelegate, WKNa
 
     // MARK: Auto-hiding toolbar
 
-    /// Headroom above the row so the blur can fade out before it reaches the window's top edge.
-    private let topPad: CGFloat = 30
-    private var toolbarHeight: CGFloat { topPad + AINCRADTheme.buttonSize + 22 }
-    /// Distance from the window's top to the middle of the button row.
-    private var rowCenterOffset: CGFloat { topPad + (AINCRADTheme.buttonSize + 22) / 2 }
+    /// Layout, top to bottom: a row of small tab pills, then the button row. The blur sits behind both.
+    private let pillHeight: CGFloat = 28
+    private var rowCenterOffset: CGFloat { 8 + pillHeight + 12 + AINCRADTheme.buttonSize / 2 }
+    private var toolbarHeight: CGFloat { rowCenterOffset + AINCRADTheme.buttonSize / 2 + 12 }
     private let rowGuide = NSLayoutGuide()
     private var rowGuideTop: NSLayoutConstraint?
-    /// How far the blur fades out past the button row. The page panel moves down by the extra over 30, so the
-    /// distance between the blur's edge and the panel stays what it was.
-    private let blurFeather: CGFloat = 62
+    private var navStack: NSStackView!
+    private var hoverTimer: Timer?
+    /// The blur is narrower than the row so the end buttons stick out past its sides.
+    private var blurSideInset: CGFloat { 44 }
+    private let blurFeather: CGFloat = 96
     private var toolbarHeightConstraint: NSLayoutConstraint?
     private var webTopConstraint: NSLayoutConstraint?
     private var toolbarShown = true
@@ -152,16 +155,30 @@ final class BrowserViewController: NSViewController, NSSearchFieldDelegate, WKNa
         globalMoveMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.mouseMoved]) { [weak self] _ in self?.pointerMoved() }
     }
 
-    private func pointerMoved() {
-        guard let window = view.window, window.isVisible else { return }
-        guard autoHide else { setToolbar(shown: true); return }
+    /// True while the pointer is over the bar's area (or the strip along the top edge that brings it out).
+    private func pointerInBarZone() -> Bool {
+        guard let window = view.window else { return false }
         let mouse = NSEvent.mouseLocation
         let frame = window.frame
         let fromTop = frame.maxY - mouse.y
-        let inside = mouse.x >= frame.minX && mouse.x <= frame.maxX && fromTop >= -4
-        let zone = toolbarShown ? toolbarHeight + 12 : topPad + 48
-        if inside, fromTop <= zone { hideWork?.cancel(); hideWork = nil; setToolbar(shown: true) }
-        else if toolbarShown, !keepToolbar { scheduleHide(after: 0.5) }
+        guard mouse.x >= frame.minX, mouse.x <= frame.maxX, fromTop >= -4 else { return false }
+        return fromTop <= (toolbarShown ? toolbarHeight + 18 : 56)
+    }
+
+    private func pointerMoved() {
+        guard let window = view.window, window.isVisible else { return }
+        guard autoHide else { setToolbar(shown: true); return }
+        if pointerInBarZone() { hideWork?.cancel(); hideWork = nil; setToolbar(shown: true) }
+        else if toolbarShown, !keepToolbar { scheduleHide(after: 0.3) }
+    }
+
+    /// While the bar is out, check a few times a second that the pointer is still there, so it always retracts.
+    private func startHoverWatch() {
+        hoverTimer?.invalidate()
+        hoverTimer = Timer.scheduledTimer(withTimeInterval: 0.2, repeats: true) { [weak self] _ in
+            guard let self, self.autoHide, self.toolbarShown, !self.keepToolbar else { return }
+            if !self.pointerInBarZone() { self.setToolbar(shown: false) }
+        }
     }
 
     private func scheduleHide(after delay: TimeInterval) {
@@ -169,7 +186,7 @@ final class BrowserViewController: NSViewController, NSSearchFieldDelegate, WKNa
         let work = DispatchWorkItem { [weak self] in
             guard let self else { return }
             self.hideWork = nil
-            if self.autoHide, !self.keepToolbar { self.setToolbar(shown: false) }
+            if self.autoHide, !self.keepToolbar, !self.pointerInBarZone() { self.setToolbar(shown: false) }
         }
         hideWork = work
         DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
@@ -179,12 +196,13 @@ final class BrowserViewController: NSViewController, NSSearchFieldDelegate, WKNa
     func setToolbar(shown: Bool, animated: Bool = true) {
         guard shown != toolbarShown, isViewLoaded else { return }
         toolbarShown = shown
-        if shown { toolbar.isHidden = false }
+        if shown { toolbar.isHidden = false; startHoverWatch() } else { hoverTimer?.invalidate(); hoverTimer = nil }
         NSAnimationContext.runAnimationGroup { context in
             context.duration = animated ? 0.3 : 0
             context.timingFunction = CAMediaTimingFunction(name: .easeOut)
             context.allowsImplicitAnimation = true
             blurHeight?.animator().constant = shown ? bandHeight : bandHeight * 0.55
+            webTopConstraint?.animator().constant = shown ? panelTop : 8
             blurBand.animator().alphaValue = shown ? 1 : 0
         }
         toolbar.layoutSubtreeIfNeeded()
@@ -268,6 +286,7 @@ final class BrowserViewController: NSViewController, NSSearchFieldDelegate, WKNa
         if toolbarShown { blurHeight?.constant = bandHeight }
         updateBlurShape()
         rowGuideTop?.constant = rowCenterOffset
+        blurBand.constraints.first { $0.firstAttribute == .height }?.constant = bandHeight
         blurBand.isHidden = !BrowserPrefsModel.shared.prefs.floatingToolbar
         blurBand.appearance = NSAppearance(named: dark ? .vibrantDark : .vibrantLight)
         webTopConstraint?.constant = panelTop
@@ -367,6 +386,7 @@ final class BrowserViewController: NSViewController, NSSearchFieldDelegate, WKNa
         tabControl.onSelect = { [weak self] in self?.selectTab(at: $0) }
         tabControl.onClose = { [weak self] in self?.closeTab(at: $0) }
         tabControl.menuFor = { [weak self] in self?.tabMenu(for: $0) }
+        tabControl.compact = true
         tabControl.translatesAutoresizingMaskIntoConstraints = false
 
         progress.style = .bar; progress.isIndeterminate = false; progress.minValue = 0; progress.maxValue = 1
@@ -383,9 +403,10 @@ final class BrowserViewController: NSViewController, NSSearchFieldDelegate, WKNa
         nav.orientation = .horizontal; nav.spacing = 8; nav.translatesAutoresizingMaskIntoConstraints = false
         let right = NSStackView(views: [privacyBadge, searchButton, downloadsButton, shareButton, bookmarkButton, addTabButton])
         right.orientation = .horizontal; right.spacing = 8; right.translatesAutoresizingMaskIntoConstraints = false
+        navStack = nav
         [lights, nav, tabControl, addressField, right, progress].forEach(toolbar.addSubview)
 
-        addressLeading = addressField.leadingAnchor.constraint(equalTo: tabControl.leadingAnchor, constant: 0)
+        addressLeading = addressField.leadingAnchor.constraint(equalTo: nav.trailingAnchor, constant: 14)
         lightsLeading = lights.leadingAnchor.constraint(equalTo: toolbar.leadingAnchor)
         rightTrailing = right.trailingAnchor.constraint(equalTo: toolbar.trailingAnchor)
         toolbar.addLayoutGuide(rowGuide)
@@ -398,9 +419,9 @@ final class BrowserViewController: NSViewController, NSSearchFieldDelegate, WKNa
             lightsLeading!, lights.centerYAnchor.constraint(equalTo: rowCenter),
             nav.leadingAnchor.constraint(equalTo: lights.trailingAnchor, constant: 14), nav.centerYAnchor.constraint(equalTo: rowCenter),
             rightTrailing!, right.centerYAnchor.constraint(equalTo: rowCenter),
-            tabControl.leadingAnchor.constraint(equalTo: nav.trailingAnchor, constant: 14), tabControl.trailingAnchor.constraint(equalTo: right.leadingAnchor, constant: -14),
-            tabControl.centerYAnchor.constraint(equalTo: rowCenter), tabControl.heightAnchor.constraint(equalToConstant: AINCRADTheme.tabHeight),
-            addressLeading!, addressField.trailingAnchor.constraint(equalTo: tabControl.trailingAnchor), addressField.centerYAnchor.constraint(equalTo: rowCenter),
+            tabControl.leadingAnchor.constraint(equalTo: lights.leadingAnchor), tabControl.trailingAnchor.constraint(equalTo: right.trailingAnchor),
+            tabControl.topAnchor.constraint(equalTo: toolbar.topAnchor, constant: 8), tabControl.heightAnchor.constraint(equalToConstant: pillHeight),
+            addressLeading!, addressField.trailingAnchor.constraint(equalTo: searchButton.leadingAnchor, constant: -12), addressField.centerYAnchor.constraint(equalTo: rowCenter),
             addressField.heightAnchor.constraint(equalToConstant: AINCRADTheme.buttonSize),
             progress.leadingAnchor.constraint(equalTo: toolbar.leadingAnchor), progress.trailingAnchor.constraint(equalTo: toolbar.trailingAnchor), progress.bottomAnchor.constraint(equalTo: toolbar.bottomAnchor), progress.heightAnchor.constraint(equalToConstant: 2),
         ])
@@ -415,7 +436,7 @@ final class BrowserViewController: NSViewController, NSSearchFieldDelegate, WKNa
     @objc private func minimizeWindowAction() { view.window?.miniaturize(nil) }
     @objc private func zoomWindowAction() { view.window?.performZoom(nil) }
 
-    /// Opens the address bar over the tabs (or tucks it away again).
+    /// Opens the address pill in the middle of the button row (or tucks it away again).
     func setSearch(expanded: Bool) {
         guard isViewLoaded else { return }
         if expanded == searchExpanded {
@@ -426,7 +447,8 @@ final class BrowserViewController: NSViewController, NSSearchFieldDelegate, WKNa
         searchButton.isSelected = expanded
         setToolbar(shown: true)
         toolbar.layoutSubtreeIfNeeded()
-        let collapsedOffset = max(tabControl.bounds.width - AINCRADTheme.buttonSize, 0)
+        let available = (searchButton.superview?.convert(searchButton.frame, to: toolbar).minX ?? toolbar.bounds.width) - (navStack.superview?.convert(navStack.frame, to: toolbar).maxX ?? 0)
+        let collapsedOffset = max(available - AINCRADTheme.buttonSize - 30, 0)
         if expanded {
             addressField.isHidden = false
             addressLeading?.constant = collapsedOffset
@@ -436,14 +458,11 @@ final class BrowserViewController: NSViewController, NSSearchFieldDelegate, WKNa
         NSAnimationContext.runAnimationGroup({ context in
             context.duration = 0.22
             context.allowsImplicitAnimation = true
-            addressLeading?.animator().constant = expanded ? 0 : collapsedOffset
+            addressLeading?.animator().constant = expanded ? 14 : collapsedOffset
             addressField.animator().alphaValue = expanded ? 1 : 0
-            tabControl.animator().alphaValue = expanded ? 0 : 1
         }, completionHandler: { [weak self] in
             guard let self else { return }
             if !self.searchExpanded { self.addressField.isHidden = true }
-            self.tabControl.isHidden = self.searchExpanded
-            if !self.searchExpanded { self.tabControl.isHidden = false }
         })
         if expanded { view.window?.makeFirstResponder(addressField); addressField.selectText(nil) }
         else if tabs.indices.contains(selectedIndex) { view.window?.makeFirstResponder(tabs[selectedIndex].webView) }
@@ -451,8 +470,11 @@ final class BrowserViewController: NSViewController, NSSearchFieldDelegate, WKNa
 
     /// How far the page panel is inset from the window sides: the end buttons stick out past its edges (the page gets narrower to make room).
     private var panelInset: CGFloat { BrowserPrefsModel.shared.prefs.floatingToolbar ? AINCRADTheme.buttonSize + 6 : 8 }
-    /// Floating: the panel's top edge runs through the middle of the button row, so the buttons hang over it.
-    private var panelTop: CGFloat { BrowserPrefsModel.shared.prefs.floatingToolbar ? (rowCenterOffset + blurFeather - 30).rounded() : toolbarHeight }
+    /// The page sits below the bar while it's out and rises to the top when it tucks away, so the two stay separate.
+    private var panelTop: CGFloat {
+        guard BrowserPrefsModel.shared.prefs.floatingToolbar else { return toolbarHeight }
+        return toolbarShown || !autoHide ? toolbarHeight + 4 : 8
+    }
 
     private func configureWebContainer() {
         webTopConstraint = webContainer.topAnchor.constraint(equalTo: mainView.topAnchor, constant: panelTop)
@@ -473,8 +495,8 @@ final class BrowserViewController: NSViewController, NSSearchFieldDelegate, WKNa
         mainView.addSubview(blurBand, positioned: .below, relativeTo: toolbar)
         blurHeight = blurBand.heightAnchor.constraint(equalToConstant: bandHeight)
         NSLayoutConstraint.activate([
-            blurBand.leadingAnchor.constraint(equalTo: mainView.leadingAnchor), blurBand.trailingAnchor.constraint(equalTo: mainView.trailingAnchor),
-            blurBand.centerYAnchor.constraint(equalTo: mainView.topAnchor, constant: rowCenterOffset),
+            blurBand.leadingAnchor.constraint(equalTo: mainView.leadingAnchor, constant: blurSideInset), blurBand.trailingAnchor.constraint(equalTo: mainView.trailingAnchor, constant: -blurSideInset),
+            blurBand.centerYAnchor.constraint(equalTo: mainView.topAnchor, constant: contentTop + contentHeight / 2),
             blurHeight!,
         ])
         updateBlurShape()

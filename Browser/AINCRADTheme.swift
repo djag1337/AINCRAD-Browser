@@ -152,10 +152,10 @@ enum AINCRADTheme {
         return NSFontManager.shared.font(withFamily: family, traits: [], weight: w, size: size) ?? NSFont(name: family, size: size)
     }
 
-    /// The toolbar button diameter: the launcher's circle times the "Toolbar size" setting (default 120%).
+    /// The toolbar button diameter: the launcher's circle times the "Toolbar size" setting (default 100%).
     static var buttonSize: CGFloat { max(36, min(84, (circleDiameter * CGFloat(BrowserPrefsModel.shared.prefs.toolbarSize)).rounded())) }
     /// Tab rows are launcher rows scaled with the toolbar.
-    static var tabHeight: CGFloat { max(34, (itemHeight * CGFloat(BrowserPrefsModel.shared.prefs.toolbarSize) * 1.05).rounded()) }
+    static var tabHeight: CGFloat { 28 }
     static var tabFontSize: CGFloat { max(15, min(24, bodySize * CGFloat(BrowserPrefsModel.shared.prefs.toolbarSize) * 0.8)) }
 
     /// A launcher-style glyph: the same SF Symbols, a touch bolder.

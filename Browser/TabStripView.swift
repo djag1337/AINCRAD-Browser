@@ -14,6 +14,8 @@ final class TabStripView: NSView {
     private let scroll = NSScrollView()
     private let content = NSView()
     private var views: [TabItemView] = []
+    /// Small pills (the toolbar's tab row) rather than full launcher rows.
+    var compact = true
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -40,6 +42,7 @@ final class TabStripView: NSView {
             views.forEach { $0.removeFromSuperview() }
             views = items.indices.map { index in
                 let v = TabItemView()
+                v.compact = compact
                 v.onSelect = { [weak self, weak v] in if let i = self?.views.firstIndex(where: { $0 === v }) { self?.onSelect?(i) } }
                 v.onClose = { [weak self, weak v] in if let i = self?.views.firstIndex(where: { $0 === v }) { self?.onClose?(i) } }
                 v.menuProvider = { [weak self, weak v] in self?.views.firstIndex(where: { $0 === v }).flatMap { self?.menuFor?($0) } }
@@ -64,11 +67,11 @@ final class TabStripView: NSView {
         super.layout()
         guard !views.isEmpty else { return }
         let gap: CGFloat = 5
-        let pinnedWidth: CGFloat = 40
+        let pinnedWidth: CGFloat = compact ? 32 : 40
         let pinnedCount = items.filter(\.pinned).count
         let normalCount = items.count - pinnedCount
         let available = bounds.width - gap * CGFloat(items.count - 1) - pinnedWidth * CGFloat(pinnedCount)
-        let width = normalCount == 0 ? 0 : max(150, min(240, available / CGFloat(normalCount)))
+        let width = normalCount == 0 ? 0 : compact ? max(96, min(170, available / CGFloat(normalCount))) : max(150, min(240, available / CGFloat(normalCount)))
         var x: CGFloat = 0
         for (i, v) in views.enumerated() {
             let w = items[i].pinned ? pinnedWidth : width
@@ -100,6 +103,7 @@ private final class TabItemView: NSView {
     private var isSelected = false
     private var pinned = false
     private var hasFavicon = false
+    var compact = false
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -121,7 +125,7 @@ private final class TabItemView: NSView {
             label.centerYAnchor.constraint(equalTo: centerYAnchor),
             label.trailingAnchor.constraint(equalTo: close.leadingAnchor, constant: -4),
             close.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8), close.centerYAnchor.constraint(equalTo: centerYAnchor),
-            close.widthAnchor.constraint(equalToConstant: 24), close.heightAnchor.constraint(equalToConstant: 24),
+            close.widthAnchor.constraint(equalToConstant: 20), close.heightAnchor.constraint(equalToConstant: 20),
         ])
     }
 
@@ -145,9 +149,10 @@ private final class TabItemView: NSView {
         let t = AINCRADTheme.self
         let h = bounds.height
         fill.frame = bounds
-        fill.cornerRadius = t.cornerRadius
+        let corner = compact ? h / 2 : t.cornerRadius
+        fill.cornerRadius = corner
         fill.masksToBounds = true
-        shine.frame = CGRect(x: t.cornerRadius, y: h - 1.5, width: max(0, bounds.width - 2 * t.cornerRadius), height: 1)
+        shine.frame = CGRect(x: corner, y: h - 1.5, width: max(0, bounds.width - 2 * corner), height: 1)
         shine.backgroundColor = NSColor.white.withAlphaComponent(t.shine).cgColor
         let b = (h * 0.72).rounded()
         let badgeFrame = CGRect(x: 7, y: ((h - b) / 2).rounded(), width: b, height: b)
@@ -156,16 +161,16 @@ private final class TabItemView: NSView {
         badge.isHidden = hasFavicon
         let inset = hasFavicon ? 0 : (b * 0.22).rounded()
         icon.frame = badgeFrame.insetBy(dx: inset, dy: inset)
-        layer?.shadowPath = CGPath(roundedRect: bounds, cornerWidth: t.cornerRadius, cornerHeight: t.cornerRadius, transform: nil)
+        layer?.shadowPath = CGPath(roundedRect: bounds, cornerWidth: corner, cornerHeight: corner, transform: nil)
         for c in constraints where c.firstItem === label && c.firstAttribute == .leading { removeConstraint(c) }
         label.leadingAnchor.constraint(equalTo: leadingAnchor, constant: badgeFrame.maxX + 9).isActive = true
     }
 
     private func refresh() {
         let t = AINCRADTheme.self
-        label.font = t.bodyFont(size: t.tabFontSize, weight: .medium)
+        label.font = t.bodyFont(size: compact ? 13 : t.tabFontSize, weight: .medium)
         close.isHidden = pinned || !(isSelected || hovering)
-        layer?.cornerRadius = t.cornerRadius
+        layer?.cornerRadius = compact ? bounds.height / 2 : t.cornerRadius
         layer?.borderWidth = t.borderWidth
         layer?.masksToBounds = false
         let state: (fill: NSColor, border: NSColor, text: NSColor, badge: NSColor, glyph: NSColor, glow: Bool)
