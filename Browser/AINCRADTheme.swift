@@ -14,6 +14,16 @@ enum AINCRADTheme {
     private(set) static var footer = NSColor(srgbRed: 0.902, green: 0.906, blue: 0.918, alpha: 0.97)
     private(set) static var circle = NSColor(srgbRed: 0.973, green: 0.973, blue: 0.976, alpha: 0.95)
     private(set) static var hover = NSColor.white
+    private(set) static var circleBorder = NSColor.white
+    private(set) static var circleIcon = NSColor(srgbRed: 0.557, green: 0.573, blue: 0.6, alpha: 1)
+    private(set) static var circleDiameter: CGFloat = 54
+    private(set) static var cornerRadius: CGFloat = 4
+    private(set) static var borderWidth: CGFloat = 1
+    private(set) static var glow: CGFloat = 12
+    private(set) static var glowOpacity: Float = 0.65
+    private(set) static var shadowRadius: CGFloat = 10
+    private(set) static var shadowOpacity: Float = 0.35
+    private(set) static var bodySize: CGFloat = 20
     private(set) static var accentText = NSColor.white
     private(set) static var bodyFamily = "Rajdhani"
     private(set) static var displayFamily = "Orbitron"
@@ -52,7 +62,7 @@ enum AINCRADTheme {
 
     static func reload() {
         let before = signature
-        var colors: [String: String] = [:], font: [String: Any] = [:]
+        var colors: [String: String] = [:], font: [String: Any] = [:], geometry: [String: Any] = [:], effects: [String: Any] = [:]
         if let settings = json(aincradFolder.appendingPathComponent("settings.json")) ?? (BrowserPrefsModel.shared.prefs.theme != "follow" ? [:] : nil) {
             playerName = (settings["playerName"] as? String) ?? ""
             let chosen = BrowserPrefsModel.shared.prefs.theme
@@ -60,6 +70,8 @@ enum AINCRADTheme {
             if let theme = json(aincradFolder.appendingPathComponent("themes/\(id).json")) {
                 colors = (theme["colors"] as? [String: String]) ?? [:]
                 font = (theme["font"] as? [String: Any]) ?? [:]
+                geometry = (theme["geometry"] as? [String: Any]) ?? [:]
+                effects = (theme["effects"] as? [String: Any]) ?? [:]
                 themeName = (theme["name"] as? String) ?? id
             }
         }
@@ -70,6 +82,17 @@ enum AINCRADTheme {
         footer = color(colors["infoFooter"]) ?? NSColor(srgbRed: 0.902, green: 0.906, blue: 0.918, alpha: 0.96)
         circle = color(colors["circle"]) ?? panel
         hover = color(colors["hover"]) ?? .white
+        circleBorder = color(colors["circleBorder"]) ?? .white
+        circleIcon = color(colors["circleIcon"]) ?? NSColor(srgbRed: 0.557, green: 0.573, blue: 0.6, alpha: 1)
+        func num(_ d: [String: Any], _ k: String, _ fallback: Double) -> Double { (d[k] as? NSNumber)?.doubleValue ?? fallback }
+        circleDiameter = CGFloat(num(geometry, "circleDiameter", 54))
+        cornerRadius = CGFloat(num(geometry, "cornerRadius", 4))
+        borderWidth = CGFloat(num(effects, "borderWidth", 1))
+        glow = CGFloat(num(effects, "selectedGlow", 12))
+        glowOpacity = Float(num(effects, "glowOpacity", 0.65))
+        shadowRadius = CGFloat(num(effects, "shadowRadius", 10))
+        shadowOpacity = Float(num(effects, "shadowOpacity", 0.35))
+        bodySize = CGFloat(num(font, "size", 20))
         accentText = color(colors["accentText"]) ?? .white
         bodyFamily = (font["family"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? "Rajdhani"
         displayFamily = (font["display"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? bodyFamily
@@ -77,7 +100,7 @@ enum AINCRADTheme {
     }
 
     private static var signature: String {
-        [accent, panel, panelText, footer].map { $0.description }.joined() + bodyFamily + displayFamily + playerName
+        [accent, panel, panelText, footer, circleBorder, circleIcon].map { $0.description }.joined() + "\(circleDiameter)\(cornerRadius)\(borderWidth)\(bodySize)" + bodyFamily + displayFamily + playerName
     }
 
     private static func json(_ url: URL) -> [String: Any]? {
@@ -107,6 +130,15 @@ enum AINCRADTheme {
     private static func font(_ family: String, _ size: CGFloat, weight: NSFont.Weight) -> NSFont? {
         let w = weight >= .semibold ? 9 : 6
         return NSFontManager.shared.font(withFamily: family, traits: [], weight: w, size: size) ?? NSFont(name: family, size: size)
+    }
+
+    /// The toolbar button diameter: the launcher's circle size, scaled down a little for a toolbar (never under 38).
+    static var buttonSize: CGFloat { max(38, min(48, (circleDiameter * 0.8).rounded())) }
+
+    /// A launcher-style glyph: the same SF Symbols, a touch bolder.
+    static func glyph(_ name: String, _ help: String? = nil) -> NSImage? {
+        NSImage(systemSymbolName: name, accessibilityDescription: help)?
+            .withSymbolConfiguration(.init(pointSize: buttonSize * 0.4, weight: .semibold))
     }
 
     static func displayFont(size: CGFloat) -> NSFont {

@@ -100,8 +100,8 @@ private final class TabItemView: NSView {
     override init(frame: NSRect) {
         super.init(frame: frame)
         wantsLayer = true
-        layer?.cornerRadius = 4
-        layer?.borderWidth = 1
+        layer?.cornerRadius = AINCRADTheme.cornerRadius
+        layer?.borderWidth = AINCRADTheme.borderWidth
         icon.translatesAutoresizingMaskIntoConstraints = false
         icon.imageScaling = .scaleProportionallyDown
         label.lineBreakMode = .byTruncatingTail
@@ -138,15 +138,17 @@ private final class TabItemView: NSView {
 
     private func refresh() {
         let t = AINCRADTheme.self
-        label.font = t.bodyFont(size: 13, weight: .semibold)
+        label.font = t.bodyFont(size: max(13, t.bodySize * 0.7), weight: .semibold)
+        layer?.cornerRadius = t.cornerRadius
         label.textColor = isSelected ? t.accentText : t.panelText
         close.contentTintColor = isSelected ? t.accentText : t.panelText
         close.isHidden = pinned || !(isSelected || hovering)
         layer?.backgroundColor = (isSelected ? t.accent : (hovering ? t.hover : t.circle)).cgColor
-        layer?.borderColor = (isSelected || hovering ? t.accent : t.accent.withAlphaComponent(0.3)).cgColor
-        layer?.shadowColor = t.accent.cgColor
-        layer?.shadowOpacity = isSelected || hovering ? 0.45 : 0
-        layer?.shadowRadius = 6
+        layer?.borderColor = (isSelected || hovering ? t.accent : t.circleBorder).cgColor
+        layer?.borderWidth = t.borderWidth
+        layer?.shadowColor = (isSelected || hovering ? t.accent : NSColor.black).cgColor
+        layer?.shadowOpacity = isSelected || hovering ? t.glowOpacity * 0.7 : t.shadowOpacity * 0.5
+        layer?.shadowRadius = isSelected || hovering ? t.glow * 0.6 : t.shadowRadius * 0.4
         layer?.shadowOffset = .zero
         layer?.masksToBounds = false
     }
@@ -175,16 +177,16 @@ final class CircleButton: NSButton {
         let t = AINCRADTheme.self
         isBordered = false
         wantsLayer = true
-        contentTintColor = t.panelText
+        contentTintColor = hovering ? t.accent : t.circleIcon
         layer?.cornerRadius = min(bounds.width, bounds.height) / 2
         layer?.backgroundColor = (hovering ? t.hover : t.circle).cgColor
-        layer?.borderWidth = 1.2
-        layer?.borderColor = (hovering ? t.accent : t.accent.withAlphaComponent(0.4)).cgColor
-        // A soft dark shadow keeps the circle readable over any wallpaper; hovering swaps it for the accent glow.
+        layer?.borderWidth = hovering ? max(2, t.borderWidth) : t.borderWidth
+        layer?.borderColor = (hovering ? t.accent : t.circleBorder).cgColor
+        // Like the launcher: a soft shadow at rest, an accent glow when the pointer is on it.
         layer?.shadowColor = (hovering ? t.accent : NSColor.black).cgColor
-        layer?.shadowOpacity = hovering ? 0.6 : 0.28
-        layer?.shadowRadius = hovering ? 7 : 4
-        layer?.shadowOffset = hovering ? .zero : CGSize(width: 0, height: -1.5)
+        layer?.shadowOpacity = hovering ? t.glowOpacity : t.shadowOpacity * 0.8
+        layer?.shadowRadius = hovering ? t.glow : t.shadowRadius * 0.5
+        layer?.shadowOffset = hovering ? .zero : CGSize(width: 0, height: -2)
         layer?.masksToBounds = false
     }
 

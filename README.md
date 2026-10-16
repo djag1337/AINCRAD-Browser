@@ -35,7 +35,7 @@ Tabs have a ✕ on the selected or hovered tab; middle-click closes; right-click
 
 ## Looks and themes
 
-By default the browser wears AINCRAD's current theme, so the launcher, widgets and browser match. In Settings › Browser › Look you can give the browser its own theme, which it keeps whatever the launcher does. New windows open at about 80% of the screen (or Compact / Large). The toolbar floats like the launcher: the window behind the buttons, address bar and tabs is see-through and the page sits in a rounded panel. Prefer a solid bar? Turn off *Floating toolbar* in Settings › Browser › Look.
+By default the browser wears AINCRAD's current theme, so the launcher, widgets and browser match. In Settings › Browser › Look you can give the browser its own theme, which it keeps whatever the launcher does. New windows open at about 80% of the screen (or Compact / Large). The toolbar floats like the launcher: the window behind the buttons, address bar and tabs is see-through and the page sits in a rounded panel. The whole bar tucks away until the pointer reaches the top edge (⌘L also brings it up); its circles, pill address bar, fonts and colours come from your launcher theme. Prefer a solid or always-visible bar? Turn off *Floating toolbar* or *Hide the toolbar…* in Settings › Browser › Look.
 
 ## Notarisation
 

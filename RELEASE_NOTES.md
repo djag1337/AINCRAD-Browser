@@ -1,5 +1,6 @@
 Installed from AINCRAD Settings › Browser, or unzip and drag to Applications.
 
-- Floating, see-through toolbar like the launcher; the page sits in a rounded panel (switch off for a solid bar)
-- Launcher-style tabs, buttons and shortcuts from 0.8
+- Toolbar hides until the pointer reaches the top edge (switchable)
+- Launcher-matched circles, icons, pill address bar, fonts and glow, read from your theme
+- Floating see-through bar and rounded page panel from 0.9
 - Signed with a development certificate, not notarised (right-click Open if you download the zip manually)

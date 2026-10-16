@@ -64,11 +64,85 @@ final class BrowserViewController: NSViewController, NSSearchFieldDelegate, WKNa
     override func viewDidAppear() {
         super.viewDidAppear()
         applyTheme()
+        installMouseMonitor()
+        // Show the bar for a moment on open so you can see where it lives, then tuck it away.
+        if autoHide { scheduleHide(after: 2.0) }
+    }
+
+    deinit {
+        if let moveMonitor { NSEvent.removeMonitor(moveMonitor) }
+        if let globalMoveMonitor { NSEvent.removeMonitor(globalMoveMonitor) }
+    }
+
+    // MARK: Auto-hiding toolbar
+
+    private var toolbarHeight: CGFloat { 10 + AINCRADTheme.buttonSize + 10 + 34 + 12 }
+    private var toolbarHeightConstraint: NSLayoutConstraint?
+    private var webTopConstraint: NSLayoutConstraint?
+    private var toolbarShown = true
+    private var hideWork: DispatchWorkItem?
+    private var moveMonitor: Any?
+    private var autoHide: Bool { BrowserPrefsModel.shared.prefs.autoHideToolbar }
+
+    /// Keep the bar up while you're typing in the address field.
+    private var keepToolbar: Bool { addressField.currentEditorIsActive }
+
+    private var globalMoveMonitor: Any?
+
+    private func installMouseMonitor() {
+        guard moveMonitor == nil else { return }
+        view.window?.acceptsMouseMovedEvents = true
+        moveMonitor = NSEvent.addLocalMonitorForEvents(matching: [.mouseMoved]) { [weak self] event in
+            self?.pointerMoved(); return event
+        }
+        // Also while another app is active, so the bar still appears when you reach for it.
+        globalMoveMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.mouseMoved]) { [weak self] _ in self?.pointerMoved() }
+    }
+
+    private func pointerMoved() {
+        guard let window = view.window, window.isVisible else { return }
+        guard autoHide else { setToolbar(shown: true); return }
+        let mouse = NSEvent.mouseLocation
+        let frame = window.frame
+        let fromTop = frame.maxY - mouse.y
+        let inside = mouse.x >= frame.minX && mouse.x <= frame.maxX && fromTop >= -4
+        let zone = toolbarShown ? toolbarHeight + 12 : 48
+        if inside, fromTop <= zone { hideWork?.cancel(); hideWork = nil; setToolbar(shown: true) }
+        else if toolbarShown, !keepToolbar { scheduleHide(after: 0.5) }
+    }
+
+    private func scheduleHide(after delay: TimeInterval) {
+        hideWork?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            self.hideWork = nil
+            if self.autoHide, !self.keepToolbar { self.setToolbar(shown: false) }
+        }
+        hideWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
+    }
+
+    func setToolbar(shown: Bool, animated: Bool = true) {
+        guard shown != toolbarShown, isViewLoaded else { return }
+        toolbarShown = shown
+        if shown { toolbar.isHidden = false }
+        let lights = view.window?.standardWindowButton(.closeButton)?.superview
+        NSAnimationContext.runAnimationGroup({ context in
+            context.duration = animated ? 0.18 : 0
+            context.allowsImplicitAnimation = true
+            toolbar.animator().alphaValue = shown ? 1 : 0
+            lights?.animator().alphaValue = shown ? 1 : 0
+            webTopConstraint?.animator().constant = shown ? toolbarHeight : 8
+            view.layoutSubtreeIfNeeded()
+        }, completionHandler: { [weak self] in
+            if let self, !self.toolbarShown { self.toolbar.isHidden = true }
+        })
     }
 
     @objc private func prefsChanged() {
         BrowserFeatures.shared.prefsChanged()
         applyTheme()
+        if !autoHide { setToolbar(shown: true) }
         tabs.forEach { BrowserFeatures.shared.configure($0) }
         refreshStartPages()
     }
@@ -92,6 +166,13 @@ final class BrowserViewController: NSViewController, NSSearchFieldDelegate, WKNa
         view.window?.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
         // Dark themes' panels are see-through, which the blur turns grey; keep them solid.
         // Floating (default): the bar is see-through and only the buttons, address bar and tabs have a surface.
+        for button in [sidebarButton, backButton, forwardButton, reloadButton, bookmarkButton, shareButton, downloadsButton, addTabButton, aincradButton] {
+            button.constraints.forEach { $0.constant = AINCRADTheme.buttonSize }
+        }
+        addressField.constraints.first { $0.firstAttribute == .height }?.constant = AINCRADTheme.buttonSize
+        addressField.layer?.cornerRadius = AINCRADTheme.buttonSize / 2
+        toolbarHeightConstraint?.constant = toolbarHeight
+        if toolbarShown { webTopConstraint?.constant = toolbarHeight }
         let floating = BrowserPrefsModel.shared.prefs.floatingToolbar
         toolbarTint.layer?.backgroundColor = floating ? NSColor.clear.cgColor : (dark ? AINCRADTheme.panel.withAlphaComponent(1) : AINCRADTheme.panel).cgColor
         webContainer.layer?.backgroundColor = (dark ? NSColor(srgbRed: 0.055, green: 0.063, blue: 0.086, alpha: 1) : NSColor.white).cgColor
@@ -103,8 +184,8 @@ final class BrowserViewController: NSViewController, NSSearchFieldDelegate, WKNa
             button.restyle()
         }
         aincradButton.image = AINCRADTheme.makeMark(size: 18)
-        addressField.layer?.borderColor = AINCRADTheme.accent.withAlphaComponent(0.72).cgColor
-        addressField.font = AINCRADTheme.bodyFont(size: 14)
+        addressField.layer?.borderColor = AINCRADTheme.accent.cgColor
+        addressField.font = AINCRADTheme.bodyFont(size: max(15, AINCRADTheme.bodySize * 0.8))
         tabControl.applyTheme()
         privacyBadge.textColor = AINCRADTheme.accent
         privacyBadge.font = AINCRADTheme.displayFont(size: 9)
@@ -148,12 +229,12 @@ final class BrowserViewController: NSViewController, NSSearchFieldDelegate, WKNa
         toolbar.addSubview(toolbarTint)
 
         func symbolButton(_ button: CircleButton, symbol: String, action: Selector, help: String) {
-            button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: help)
+            button.image = AINCRADTheme.glyph(symbol, help)
             button.bezelStyle = .texturedRounded; button.isBordered = false
             button.target = self; button.action = action; button.toolTip = help
             button.translatesAutoresizingMaskIntoConstraints = false
-            button.widthAnchor.constraint(equalToConstant: 36).isActive = true
-            button.heightAnchor.constraint(equalToConstant: 36).isActive = true
+            button.widthAnchor.constraint(equalToConstant: AINCRADTheme.buttonSize).isActive = true
+            button.heightAnchor.constraint(equalToConstant: AINCRADTheme.buttonSize).isActive = true
             button.imagePosition = .imageOnly
             (button as? CircleButton)?.restyle()
         }
@@ -175,11 +256,11 @@ final class BrowserViewController: NSViewController, NSSearchFieldDelegate, WKNa
         addressField.translatesAutoresizingMaskIntoConstraints = false
         addressField.maximumRecents = 0
         addressField.wantsLayer = true
-        addressField.layer?.cornerRadius = 4
-        addressField.layer?.borderWidth = 1
-        addressField.layer?.borderColor = AINCRADTheme.accent.withAlphaComponent(0.72).cgColor
+        addressField.layer?.cornerRadius = AINCRADTheme.buttonSize / 2
+        addressField.layer?.borderWidth = 1.5
+        addressField.layer?.borderColor = AINCRADTheme.accent.cgColor
         addressField.layer?.backgroundColor = AINCRADTheme.circle.withAlphaComponent(1).cgColor
-        addressField.font = AINCRADTheme.bodyFont(size: 14)
+        addressField.font = AINCRADTheme.bodyFont(size: max(15, AINCRADTheme.bodySize * 0.8))
 
         tabControl.onSelect = { [weak self] in self?.selectTab(at: $0) }
         tabControl.onClose = { [weak self] in self?.closeTab(at: $0) }
@@ -211,25 +292,27 @@ final class BrowserViewController: NSViewController, NSSearchFieldDelegate, WKNa
         [nav, addressField, right, tabControl, addTabButton, progress].forEach(toolbar.addSubview)
 
         NSLayoutConstraint.activate([
-            toolbar.topAnchor.constraint(equalTo: mainView.topAnchor), toolbar.leadingAnchor.constraint(equalTo: mainView.leadingAnchor), toolbar.trailingAnchor.constraint(equalTo: mainView.trailingAnchor), toolbar.heightAnchor.constraint(equalToConstant: 100),
+            toolbar.topAnchor.constraint(equalTo: mainView.topAnchor), toolbar.leadingAnchor.constraint(equalTo: mainView.leadingAnchor), toolbar.trailingAnchor.constraint(equalTo: mainView.trailingAnchor), toolbar.heightAnchor.constraint(equalToConstant: toolbarHeight),
             nav.leadingAnchor.constraint(equalTo: toolbar.leadingAnchor, constant: 76), nav.topAnchor.constraint(equalTo: toolbar.topAnchor, constant: 10),
-            addressField.leadingAnchor.constraint(equalTo: nav.trailingAnchor, constant: 8), addressField.topAnchor.constraint(equalTo: toolbar.topAnchor, constant: 10), addressField.heightAnchor.constraint(equalToConstant: 36),
+            addressField.leadingAnchor.constraint(equalTo: nav.trailingAnchor, constant: 8), addressField.topAnchor.constraint(equalTo: toolbar.topAnchor, constant: 10), addressField.heightAnchor.constraint(equalToConstant: AINCRADTheme.buttonSize),
             right.leadingAnchor.constraint(equalTo: addressField.trailingAnchor, constant: 8), right.trailingAnchor.constraint(equalTo: toolbar.trailingAnchor, constant: -12), right.centerYAnchor.constraint(equalTo: addressField.centerYAnchor),
             addressField.widthAnchor.constraint(greaterThanOrEqualToConstant: 280),
-            tabControl.leadingAnchor.constraint(equalTo: toolbar.leadingAnchor, constant: 14), tabControl.trailingAnchor.constraint(equalTo: addTabButton.leadingAnchor, constant: -6), tabControl.topAnchor.constraint(equalTo: addressField.bottomAnchor, constant: 11), tabControl.heightAnchor.constraint(equalToConstant: 32),
+            tabControl.leadingAnchor.constraint(equalTo: toolbar.leadingAnchor, constant: 14), tabControl.trailingAnchor.constraint(equalTo: addTabButton.leadingAnchor, constant: -6), tabControl.topAnchor.constraint(equalTo: addressField.bottomAnchor, constant: 11), tabControl.heightAnchor.constraint(equalToConstant: 34),
             addTabButton.trailingAnchor.constraint(equalTo: toolbar.trailingAnchor, constant: -10), addTabButton.centerYAnchor.constraint(equalTo: tabControl.centerYAnchor),
             progress.leadingAnchor.constraint(equalTo: toolbar.leadingAnchor), progress.trailingAnchor.constraint(equalTo: toolbar.trailingAnchor), progress.bottomAnchor.constraint(equalTo: toolbar.bottomAnchor), progress.heightAnchor.constraint(equalToConstant: 2)
         ])
+        toolbarHeightConstraint = toolbar.constraints.first { $0.firstAttribute == .height && $0.secondItem == nil }
         rebuildTabControl()
     }
 
     private func configureWebContainer() {
+        webTopConstraint = webContainer.topAnchor.constraint(equalTo: mainView.topAnchor, constant: toolbarHeight)
         webContainer.translatesAutoresizingMaskIntoConstraints = false
         webContainer.wantsLayer = true
         webContainer.layer?.masksToBounds = true
         mainView.addSubview(webContainer)
         NSLayoutConstraint.activate([
-            webContainer.topAnchor.constraint(equalTo: toolbar.bottomAnchor), webContainer.leadingAnchor.constraint(equalTo: mainView.leadingAnchor, constant: 8), webContainer.trailingAnchor.constraint(equalTo: mainView.trailingAnchor, constant: -8), webContainer.bottomAnchor.constraint(equalTo: mainView.bottomAnchor, constant: -8)
+            webTopConstraint!, webContainer.leadingAnchor.constraint(equalTo: mainView.leadingAnchor, constant: 8), webContainer.trailingAnchor.constraint(equalTo: mainView.trailingAnchor, constant: -8), webContainer.bottomAnchor.constraint(equalTo: mainView.bottomAnchor, constant: -8)
         ])
     }
 
@@ -419,7 +502,7 @@ final class BrowserViewController: NSViewController, NSSearchFieldDelegate, WKNa
         guard tabs.indices.contains(selectedIndex) else { return }
         let web = tabs[selectedIndex].webView
         backButton.isEnabled = web.canGoBack; forwardButton.isEnabled = web.canGoForward
-        reloadButton.image = NSImage(systemSymbolName: web.isLoading ? "xmark" : "arrow.clockwise", accessibilityDescription: web.isLoading ? "Stop" : "Reload")
+        reloadButton.image = AINCRADTheme.glyph(web.isLoading ? "xmark" : "arrow.clockwise", web.isLoading ? "Stop" : "Reload")
         let value = web.estimatedProgress
         progress.doubleValue = value; progress.isHidden = !web.isLoading || value >= 1
         if !addressField.currentEditorIsActive { addressField.stringValue = web.url?.scheme == "glass" ? "" : (web.url?.absoluteString ?? "") }
@@ -443,7 +526,7 @@ final class BrowserViewController: NSViewController, NSSearchFieldDelegate, WKNa
     }
 
     func openURL(_ url: URL) { tabs[selectedIndex].webView.load(URLRequest(url: url)) }
-    func focusAddressBar() { view.window?.makeFirstResponder(addressField); addressField.selectText(nil) }
+    func focusAddressBar() { setToolbar(shown: true); view.window?.makeFirstResponder(addressField); addressField.selectText(nil) }
     @objc private func goBack() { tabs[selectedIndex].webView.goBack() }
     @objc private func goForward() { tabs[selectedIndex].webView.goForward() }
     @objc private func reloadOrStop() {
