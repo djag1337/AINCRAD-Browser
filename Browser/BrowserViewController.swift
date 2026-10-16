@@ -164,12 +164,13 @@ final class BrowserViewController: NSViewController, NSSearchFieldDelegate, WKNa
     func setToolbar(shown: Bool, animated: Bool = true) {
         guard shown != toolbarShown, isViewLoaded else { return }
         toolbarShown = shown
+        // The page resizes once, instantly. Animating its edge re-lays out the web view every frame (heavy over video).
+        webBottom?.constant = -(shown ? toolbarHeight + 4 : 8)
         if shown { toolbar.isHidden = false; startHoverWatch() } else { hoverTimer?.invalidate(); hoverTimer = nil }
         NSAnimationContext.runAnimationGroup { context in
             context.duration = animated ? 0.22 : 0
             context.timingFunction = CAMediaTimingFunction(name: .easeOut)
             context.allowsImplicitAnimation = true
-            webBottom?.animator().constant = -(shown ? toolbarHeight + 4 : 8)
         }
         toolbar.layoutSubtreeIfNeeded()
         let items: [NSView] = [closeLight, minLight, zoomLight, aincradButton, sidebarButton, backButton, forwardButton, reloadButton,
