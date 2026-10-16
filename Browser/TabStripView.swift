@@ -227,6 +227,12 @@ final class CircleButton: NSControl {
 
     private let fill = CAGradientLayer()
     private let ring = CALayer()
+    private let progressRing = CAShapeLayer()
+    private let dot = CALayer()
+    /// Progress shown as an accent arc around the circle (Safari's download button); nil hides it.
+    var ringProgress: Double? { didSet { updateProgressRing() } }
+    /// A small accent dot (something new to look at).
+    var showsDot = false { didSet { dot.isHidden = !showsDot } }
     private let iconLayer = CALayer()
     private var hovering = false { didSet { restyle() } }
     private var pressed = false { didSet { restyle() } }
@@ -251,6 +257,10 @@ final class CircleButton: NSControl {
         layer?.addSublayer(fill)
         layer?.addSublayer(ring)
         layer?.addSublayer(iconLayer)
+        progressRing.fillColor = nil; progressRing.lineWidth = 3; progressRing.lineCap = .round; progressRing.isHidden = true
+        layer?.addSublayer(progressRing)
+        dot.isHidden = true
+        layer?.addSublayer(dot)
         iconLayer.contentsGravity = .resizeAspect
         widthC = widthAnchor.constraint(equalToConstant: AINCRADTheme.buttonSize)
         heightC = heightAnchor.constraint(equalToConstant: AINCRADTheme.buttonSize)
@@ -259,6 +269,16 @@ final class CircleButton: NSControl {
     }
 
     required init?(coder: NSCoder) { fatalError("not used") }
+
+    private func updateProgressRing() {
+        progressRing.strokeColor = AINCRADTheme.accent.cgColor
+        dot.backgroundColor = AINCRADTheme.accent.cgColor
+        guard let p = ringProgress else { progressRing.isHidden = true; return }
+        progressRing.isHidden = false
+        CATransaction.begin(); CATransaction.setAnimationDuration(0.2)
+        progressRing.strokeEnd = CGFloat(max(0.03, min(p, 1)))
+        CATransaction.commit()
+    }
 
     func updateSize() {
         let d = (AINCRADTheme.buttonSize * factor).rounded()
@@ -277,6 +297,13 @@ final class CircleButton: NSControl {
         let s = (d * 0.46).rounded()
         iconLayer.frame = CGRect(x: (d - s) / 2, y: (d - s) / 2, width: s, height: s)
         layer?.shadowPath = CGPath(ellipseIn: bounds, transform: nil)
+        let r = bounds.insetBy(dx: 2.5, dy: 2.5)
+        // Starts at 12 o'clock and runs clockwise (the view isn't flipped, so the path is mirrored).
+        progressRing.path = CGPath(ellipseIn: r, transform: nil)
+        progressRing.frame = bounds
+        progressRing.setAffineTransform(CGAffineTransform(rotationAngle: .pi / 2).scaledBy(x: 1, y: -1))
+        dot.frame = CGRect(x: bounds.width - 13, y: bounds.height - 13, width: 11, height: 11)
+        dot.cornerRadius = 5.5
         // Re-draw the icon at its real size (it used to be drawn before layout, then stretched: pixelated).
         if abs(renderedSide - s) > 0.5 { renderedSide = s; renderIcon() }
         restyle()

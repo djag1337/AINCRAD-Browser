@@ -71,6 +71,7 @@ final class BrowserViewController: NSViewController, NSSearchFieldDelegate, WKNa
         NotificationCenter.default.addObserver(self, selector: #selector(themeChanged), name: AINCRADTheme.changed, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(prefsChanged), name: .browserPrefsChanged, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(downloadStartedNotice), name: .downloadStarted, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(downloadsChanged), name: .downloadsChanged, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(rulesReady), name: .browserFeaturesReady, object: nil)
     }
 
@@ -110,7 +111,7 @@ final class BrowserViewController: NSViewController, NSSearchFieldDelegate, WKNa
     private var autoHide: Bool { BrowserPrefsModel.shared.prefs.autoHideToolbar }
 
     /// Keep the bar up while you're typing in the address field.
-    private var keepToolbar: Bool { addressField.currentEditorIsActive || searchExpanded || listPopover?.isShown == true || downloadsPopover?.isShown == true }
+    private var keepToolbar: Bool { Date() < holdUntil || addressField.currentEditorIsActive || searchExpanded || listPopover?.isShown == true || downloadsPopover?.isShown == true }
 
     private var globalMoveMonitor: Any?
 
@@ -721,15 +722,63 @@ final class BrowserViewController: NSViewController, NSSearchFieldDelegate, WKNa
         let popover = NSPopover()
         popover.behavior = .transient; popover.animates = true
         popover.contentViewController = DownloadsListViewController()
-        popover.contentSize = NSSize(width: 420, height: 360)
+        DownloadManager.shared.hasUnseen = false
+        downloadsButton.showsDot = false
+        popover.contentSize = NSSize(width: 400, height: 340)
         downloadsPopover = popover
         popover.show(relativeTo: downloadsButton.bounds, of: downloadsButton, preferredEdge: .maxY)
     }
 
-    /// A new download pops the list open on the window in front, so you can see it start.
+    /// Like Safari: a new download brings the bar up for a moment, its icon flies into the downloads button,
+    /// and the button shows a progress ring until it's done (then a dot until you open the list).
     @objc private func downloadStartedNotice() {
-        guard view.window?.isKeyWindow == true else { return }
-        showDownloadsPopover()
+        guard view.window?.isVisible == true, view.window?.isMiniaturized == false else { return }
+        holdToolbar(for: 3)
+        let ext = (DownloadManager.shared.records.first?.filename as NSString?)?.pathExtension ?? ""
+        flyIntoDownloads(NSWorkspace.shared.icon(for: .init(filenameExtension: ext) ?? .data))
+        downloadsChanged()
+    }
+
+    @objc private func downloadsChanged() {
+        let m = DownloadManager.shared
+        downloadsButton.ringProgress = m.activeFraction
+        downloadsButton.showsDot = m.hasUnseen && m.activeFraction == nil
+        if m.activeFraction != nil { holdToolbar(for: 1.5) }
+    }
+
+    private var holdUntil = Date.distantPast
+    /// Keeps the bar out for a while even if the pointer isn't near it.
+    private func holdToolbar(for seconds: TimeInterval) {
+        holdUntil = max(holdUntil, Date().addingTimeInterval(seconds))
+        setToolbar(shown: true)
+    }
+
+    private func flyIntoDownloads(_ image: NSImage) {
+        guard let root = view.layer else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in   // after the bar has slid up
+            guard let self else { return }
+            let target = self.downloadsButton.convert(NSPoint(x: self.downloadsButton.bounds.midX, y: self.downloadsButton.bounds.midY), to: self.view)
+            let start = NSPoint(x: self.view.bounds.midX, y: self.view.bounds.midY)
+            let flyer = CALayer()
+            flyer.contents = image
+            flyer.bounds = CGRect(x: 0, y: 0, width: 72, height: 72)
+            flyer.position = target
+            flyer.zPosition = 1000
+            root.addSublayer(flyer)
+            let path = CGMutablePath()
+            path.move(to: start)
+            path.addQuadCurve(to: target, control: CGPoint(x: (start.x + target.x) / 2, y: max(start.y, target.y) + 160))
+            let move = CAKeyframeAnimation(keyPath: "position"); move.path = path
+            let shrink = CABasicAnimation(keyPath: "transform.scale"); shrink.fromValue = 1.4; shrink.toValue = 0.3
+            let fade = CAKeyframeAnimation(keyPath: "opacity"); fade.values = [0, 1, 1, 0.2]; fade.keyTimes = [0, 0.15, 0.8, 1]
+            let group = CAAnimationGroup(); group.animations = [move, shrink, fade]; group.duration = 0.7
+            group.timingFunction = CAMediaTimingFunction(name: .easeIn)
+            group.fillMode = .forwards; group.isRemovedOnCompletion = false
+            CATransaction.begin()
+            CATransaction.setCompletionBlock { flyer.removeFromSuperlayer() }
+            flyer.add(group, forKey: "fly")
+            CATransaction.commit()
+        }
     }
 
     /// The bookmarks and history list: a dropdown panel anchored to its button (above it, since the bar is at the bottom).
@@ -947,7 +996,7 @@ final class BrowserViewController: NSViewController, NSSearchFieldDelegate, WKNa
         mainView.addSubview(button)
         NSLayoutConstraint.activate([
             button.centerXAnchor.constraint(equalTo: mainView.centerXAnchor), button.heightAnchor.constraint(equalToConstant: 36),
-            button.bottomAnchor.constraint(equalTo: mainView.bottomAnchor, constant: -(toolbarShown ? toolbarHeight + 14 : 18)),
+            button.bottomAnchor.constraint(equalTo: mainView.bottomAnchor, constant: -(toolbarHeight + 14)),
             button.widthAnchor.constraint(greaterThanOrEqualToConstant: 220),
         ])
         noticeView = button; noticeAction = perform
