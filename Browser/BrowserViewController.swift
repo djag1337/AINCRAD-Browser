@@ -127,7 +127,9 @@ final class BrowserViewController: NSViewController, NSSearchFieldDelegate, WKNa
     private var rowCenterOffset: CGFloat { topPad + (AINCRADTheme.buttonSize + 22) / 2 }
     private let rowGuide = NSLayoutGuide()
     private var rowGuideTop: NSLayoutConstraint?
-    private let blurFeather: CGFloat = 30
+    /// How far the blur fades out past the button row. The page panel moves down by the extra over 30, so the
+    /// distance between the blur's edge and the panel stays what it was.
+    private let blurFeather: CGFloat = 62
     private var toolbarHeightConstraint: NSLayoutConstraint?
     private var webTopConstraint: NSLayoutConstraint?
     private var toolbarShown = true
@@ -450,7 +452,7 @@ final class BrowserViewController: NSViewController, NSSearchFieldDelegate, WKNa
     /// How far the page panel is inset from the window sides: the end buttons stick out past its edges (the page gets narrower to make room).
     private var panelInset: CGFloat { BrowserPrefsModel.shared.prefs.floatingToolbar ? AINCRADTheme.buttonSize + 6 : 8 }
     /// Floating: the panel's top edge runs through the middle of the button row, so the buttons hang over it.
-    private var panelTop: CGFloat { BrowserPrefsModel.shared.prefs.floatingToolbar ? rowCenterOffset.rounded() : toolbarHeight }
+    private var panelTop: CGFloat { BrowserPrefsModel.shared.prefs.floatingToolbar ? (rowCenterOffset + blurFeather - 30).rounded() : toolbarHeight }
 
     private func configureWebContainer() {
         webTopConstraint = webContainer.topAnchor.constraint(equalTo: mainView.topAnchor, constant: panelTop)
