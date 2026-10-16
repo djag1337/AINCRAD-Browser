@@ -1,6 +1,4 @@
 Installed from AINCRAD Settings › Browser, or unzip and drag to Applications.
 
-- Launcher button removed from the bar; taller tab pills (nearly the buttons' height)
-- Calmer reveal: no bounce, much shorter travel
-- `aincrad-browser://bookmark` saves the page in front (used by AINCRAD's Web section)
+- Fix: clicking the Dock icon or opening the browser from the launcher now brings a window back after it was closed or minimised
 - Signed with a development certificate, not notarised (right-click Open if you download the zip manually)

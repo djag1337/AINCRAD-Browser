@@ -27,6 +27,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
 
+    /// Clicking the Dock icon, or opening the app from the launcher or Finder, while it has no visible window
+    /// (closed or minimised) brings a window back instead of doing nothing.
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        if flag { return true }
+        if let minimized = windows.first(where: { $0.window?.isMiniaturized == true }) {
+            minimized.window?.deminiaturize(nil)
+            minimized.window?.makeKeyAndOrderFront(nil)
+        } else if let hidden = windows.last(where: { !$0.browser.privateMode }) {
+            hidden.showWindow(nil)
+        } else {
+            openWindow(privateMode: false)
+        }
+        NSApp.activate(ignoringOtherApps: true)
+        return false
+    }
+
     func applicationWillTerminate(_ notification: Notification) {
         saveSession()
         AINCRADLink.clearTabs()
