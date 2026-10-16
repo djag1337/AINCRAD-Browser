@@ -13,7 +13,7 @@ final class BrowserViewController: NSViewController, NSSearchFieldDelegate, WKNa
     private let mainView = NSView()
     private let webContainer = NSView()
     private let toolbar = DragToolbarView()
-    /// The theme's panel colour, laid over the blur (a visual effect view draws over its own layer colour).
+    /// The theme's panel colour (only used by the solid-bar option).
     private let toolbarTint = NSView()
     private let tabControl = TabStripView()
     /// https links we swapped in for http ones, so a site without https can fall back to the original.
@@ -37,39 +37,6 @@ final class BrowserViewController: NSViewController, NSSearchFieldDelegate, WKNa
     private let zoomLight = CircleButton(factor: 0.72)
     private var addressLeading: NSLayoutConstraint?
     private var searchExpanded = false
-    /// A frosted band behind the bar that grows down from the top edge when the bar appears.
-    private let blurBand = NSVisualEffectView()
-    private var blurHeight: NSLayoutConstraint?
-    /// The floating capsule hugs the button row with a little padding.
-    private var contentTop: CGFloat { 4 }
-    private var contentHeight: CGFloat { toolbarHeight - 4 - contentTop }
-    private var bandHeight: CGFloat { contentHeight + 2 * blurFeather }
-
-    /// A soft mask: full strength behind the buttons, fading smoothly to nothing on every side.
-    private func updateBlurShape() {
-        let feather = blurFeather
-        let r = (contentHeight / 2).rounded()
-        let cap = r + feather
-        let size = 2 * cap + 2
-        let steps = 36
-        let mask = NSImage(size: NSSize(width: size, height: size), flipped: false) { rect in
-            guard let context = NSGraphicsContext.current?.cgContext else { return false }
-            context.setBlendMode(.copy)
-            for i in 0..<steps {
-                let t = CGFloat(i + 1) / CGFloat(steps)
-                let smooth = t * t * (3 - 2 * t)
-                let inset = CGFloat(i) / CGFloat(steps) * feather
-                let shape = rect.insetBy(dx: inset, dy: inset)
-                context.setFillColor(NSColor.black.withAlphaComponent(smooth * 0.9).cgColor)
-                context.addPath(CGPath(roundedRect: shape, cornerWidth: max(cap - inset, 1), cornerHeight: max(cap - inset, 1), transform: nil))
-                context.fillPath()
-            }
-            return true
-        }
-        mask.capInsets = NSEdgeInsets(top: cap, left: cap, bottom: cap, right: cap)
-        mask.resizingMode = .stretch
-        blurBand.maskImage = mask
-    }
 
     private var webLeading: NSLayoutConstraint?
     private var webTrailing: NSLayoutConstraint?
@@ -122,17 +89,14 @@ final class BrowserViewController: NSViewController, NSSearchFieldDelegate, WKNa
 
     // MARK: Auto-hiding toolbar
 
-    /// Layout, top to bottom: a row of small tab pills, then the button row. The blur sits behind both.
-    private let pillHeight: CGFloat = 28
-    private var rowCenterOffset: CGFloat { 8 + pillHeight + 12 + AINCRADTheme.buttonSize / 2 }
-    private var toolbarHeight: CGFloat { rowCenterOffset + AINCRADTheme.buttonSize / 2 + 12 }
+    /// One row: window buttons, navigation, the tab pills, then search and the rest.
+    private let pillHeight: CGFloat = 38
+    private var toolbarHeight: CGFloat { AINCRADTheme.buttonSize + 26 }
+    private var rowCenterOffset: CGFloat { toolbarHeight / 2 }
     private let rowGuide = NSLayoutGuide()
     private var rowGuideTop: NSLayoutConstraint?
     private var navStack: NSStackView!
     private var hoverTimer: Timer?
-    /// The blur is narrower than the row so the end buttons stick out past its sides.
-    private var blurSideInset: CGFloat { 44 }
-    private let blurFeather: CGFloat = 96
     private var toolbarHeightConstraint: NSLayoutConstraint?
     private var webTopConstraint: NSLayoutConstraint?
     private var toolbarShown = true
@@ -201,9 +165,7 @@ final class BrowserViewController: NSViewController, NSSearchFieldDelegate, WKNa
             context.duration = animated ? 0.3 : 0
             context.timingFunction = CAMediaTimingFunction(name: .easeOut)
             context.allowsImplicitAnimation = true
-            blurHeight?.animator().constant = shown ? bandHeight : bandHeight * 0.55
             webTopConstraint?.animator().constant = shown ? panelTop : 8
-            blurBand.animator().alphaValue = shown ? 1 : 0
         }
         toolbar.layoutSubtreeIfNeeded()
         let items: [NSView] = [closeLight, minLight, zoomLight, aincradButton, sidebarButton, backButton, forwardButton, reloadButton,
@@ -275,7 +237,6 @@ final class BrowserViewController: NSViewController, NSSearchFieldDelegate, WKNa
     private func applyTheme() {
         let dark = AINCRADTheme.isDark
         view.window?.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
-        // Dark themes' panels are see-through, which the blur turns grey; keep them solid.
         // Floating (default): the bar is see-through and only the buttons, address bar and tabs have a surface.
         let allButtons = [closeLight, minLight, zoomLight, aincradButton, sidebarButton, backButton, forwardButton, reloadButton, searchButton, downloadsButton, shareButton, bookmarkButton, addTabButton]
         allButtons.forEach { $0.updateSize() }
@@ -283,12 +244,7 @@ final class BrowserViewController: NSViewController, NSSearchFieldDelegate, WKNa
         addressField.layer?.cornerRadius = AINCRADTheme.buttonSize / 2
         tabControl.constraints.first { $0.firstAttribute == .height }?.constant = AINCRADTheme.tabHeight
         toolbarHeightConstraint?.constant = toolbarHeight
-        if toolbarShown { blurHeight?.constant = bandHeight }
-        updateBlurShape()
         rowGuideTop?.constant = rowCenterOffset
-        blurBand.constraints.first { $0.firstAttribute == .height }?.constant = bandHeight
-        blurBand.isHidden = !BrowserPrefsModel.shared.prefs.floatingToolbar
-        blurBand.appearance = NSAppearance(named: dark ? .vibrantDark : .vibrantLight)
         webTopConstraint?.constant = panelTop
         webLeading?.constant = panelInset; webTrailing?.constant = -panelInset
         let lightD = (AINCRADTheme.buttonSize * 0.72).rounded()
@@ -406,7 +362,7 @@ final class BrowserViewController: NSViewController, NSSearchFieldDelegate, WKNa
         navStack = nav
         [lights, nav, tabControl, addressField, right, progress].forEach(toolbar.addSubview)
 
-        addressLeading = addressField.leadingAnchor.constraint(equalTo: nav.trailingAnchor, constant: 14)
+        addressLeading = addressField.leadingAnchor.constraint(equalTo: tabControl.leadingAnchor, constant: 0)
         lightsLeading = lights.leadingAnchor.constraint(equalTo: toolbar.leadingAnchor)
         rightTrailing = right.trailingAnchor.constraint(equalTo: toolbar.trailingAnchor)
         toolbar.addLayoutGuide(rowGuide)
@@ -419,9 +375,9 @@ final class BrowserViewController: NSViewController, NSSearchFieldDelegate, WKNa
             lightsLeading!, lights.centerYAnchor.constraint(equalTo: rowCenter),
             nav.leadingAnchor.constraint(equalTo: lights.trailingAnchor, constant: 14), nav.centerYAnchor.constraint(equalTo: rowCenter),
             rightTrailing!, right.centerYAnchor.constraint(equalTo: rowCenter),
-            tabControl.leadingAnchor.constraint(equalTo: lights.leadingAnchor), tabControl.trailingAnchor.constraint(equalTo: right.trailingAnchor),
-            tabControl.topAnchor.constraint(equalTo: toolbar.topAnchor, constant: 8), tabControl.heightAnchor.constraint(equalToConstant: pillHeight),
-            addressLeading!, addressField.trailingAnchor.constraint(equalTo: searchButton.leadingAnchor, constant: -12), addressField.centerYAnchor.constraint(equalTo: rowCenter),
+            tabControl.leadingAnchor.constraint(equalTo: nav.trailingAnchor, constant: 14), tabControl.trailingAnchor.constraint(equalTo: right.leadingAnchor, constant: -14),
+            tabControl.centerYAnchor.constraint(equalTo: rowCenter), tabControl.heightAnchor.constraint(equalToConstant: pillHeight),
+            addressLeading!, addressField.trailingAnchor.constraint(equalTo: tabControl.trailingAnchor), addressField.centerYAnchor.constraint(equalTo: rowCenter),
             addressField.heightAnchor.constraint(equalToConstant: AINCRADTheme.buttonSize),
             progress.leadingAnchor.constraint(equalTo: toolbar.leadingAnchor), progress.trailingAnchor.constraint(equalTo: toolbar.trailingAnchor), progress.bottomAnchor.constraint(equalTo: toolbar.bottomAnchor), progress.heightAnchor.constraint(equalToConstant: 2),
         ])
@@ -436,7 +392,7 @@ final class BrowserViewController: NSViewController, NSSearchFieldDelegate, WKNa
     @objc private func minimizeWindowAction() { view.window?.miniaturize(nil) }
     @objc private func zoomWindowAction() { view.window?.performZoom(nil) }
 
-    /// Opens the address pill in the middle of the button row (or tucks it away again).
+    /// Opens the address pill over the tabs (or tucks it away again).
     func setSearch(expanded: Bool) {
         guard isViewLoaded else { return }
         if expanded == searchExpanded {
@@ -447,8 +403,7 @@ final class BrowserViewController: NSViewController, NSSearchFieldDelegate, WKNa
         searchButton.isSelected = expanded
         setToolbar(shown: true)
         toolbar.layoutSubtreeIfNeeded()
-        let available = (searchButton.superview?.convert(searchButton.frame, to: toolbar).minX ?? toolbar.bounds.width) - (navStack.superview?.convert(navStack.frame, to: toolbar).maxX ?? 0)
-        let collapsedOffset = max(available - AINCRADTheme.buttonSize - 30, 0)
+        let collapsedOffset = max(tabControl.bounds.width - AINCRADTheme.buttonSize, 0)
         if expanded {
             addressField.isHidden = false
             addressLeading?.constant = collapsedOffset
@@ -458,8 +413,9 @@ final class BrowserViewController: NSViewController, NSSearchFieldDelegate, WKNa
         NSAnimationContext.runAnimationGroup({ context in
             context.duration = 0.22
             context.allowsImplicitAnimation = true
-            addressLeading?.animator().constant = expanded ? 14 : collapsedOffset
+            addressLeading?.animator().constant = expanded ? 0 : collapsedOffset
             addressField.animator().alphaValue = expanded ? 1 : 0
+            tabControl.animator().alphaValue = expanded ? 0 : 1
         }, completionHandler: { [weak self] in
             guard let self else { return }
             if !self.searchExpanded { self.addressField.isHidden = true }
@@ -488,18 +444,6 @@ final class BrowserViewController: NSViewController, NSSearchFieldDelegate, WKNa
         mainView.addSubview(webContainer, positioned: .below, relativeTo: toolbar)
         NSLayoutConstraint.activate([webTopConstraint!, webLeading!, webTrailing!, webBottom!])
 
-        blurBand.material = .hudWindow
-        blurBand.blendingMode = .behindWindow
-        blurBand.state = .active
-        blurBand.translatesAutoresizingMaskIntoConstraints = false
-        mainView.addSubview(blurBand, positioned: .below, relativeTo: toolbar)
-        blurHeight = blurBand.heightAnchor.constraint(equalToConstant: bandHeight)
-        NSLayoutConstraint.activate([
-            blurBand.leadingAnchor.constraint(equalTo: mainView.leadingAnchor, constant: blurSideInset), blurBand.trailingAnchor.constraint(equalTo: mainView.trailingAnchor, constant: -blurSideInset),
-            blurBand.centerYAnchor.constraint(equalTo: mainView.topAnchor, constant: contentTop + contentHeight / 2),
-            blurHeight!,
-        ])
-        updateBlurShape()
     }
 
     private func createTab(state: TabState?, select: Bool, blank: Bool = false) {

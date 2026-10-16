@@ -66,12 +66,12 @@ final class TabStripView: NSView {
     override func layout() {
         super.layout()
         guard !views.isEmpty else { return }
-        let gap: CGFloat = 5
+        let gap: CGFloat = compact ? 8 : 5
         let pinnedWidth: CGFloat = compact ? 32 : 40
         let pinnedCount = items.filter(\.pinned).count
         let normalCount = items.count - pinnedCount
         let available = bounds.width - gap * CGFloat(items.count - 1) - pinnedWidth * CGFloat(pinnedCount)
-        let width = normalCount == 0 ? 0 : compact ? max(96, min(170, available / CGFloat(normalCount))) : max(150, min(240, available / CGFloat(normalCount)))
+        let width = normalCount == 0 ? 0 : compact ? max(110, available / CGFloat(normalCount)) : max(150, min(240, available / CGFloat(normalCount)))
         var x: CGFloat = 0
         for (i, v) in views.enumerated() {
             let w = items[i].pinned ? pinnedWidth : width
@@ -168,7 +168,7 @@ private final class TabItemView: NSView {
 
     private func refresh() {
         let t = AINCRADTheme.self
-        label.font = t.bodyFont(size: compact ? 13 : t.tabFontSize, weight: .medium)
+        label.font = t.bodyFont(size: compact ? 14 : t.tabFontSize, weight: .medium)
         close.isHidden = pinned || !(isSelected || hovering)
         layer?.cornerRadius = compact ? bounds.height / 2 : t.cornerRadius
         layer?.borderWidth = t.borderWidth
