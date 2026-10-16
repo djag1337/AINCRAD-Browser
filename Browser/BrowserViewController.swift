@@ -46,7 +46,7 @@ final class BrowserViewController: NSViewController, NSSearchFieldDelegate, WKNa
     private let privacyBadge = NSTextField(labelWithString: "PRIVATE")
     private let productLabel = NSTextField(labelWithString: "AINCRAD // BROWSER")
     private let accentRule = NSView()
-    private var sidebarVisible = false
+    private var listPopover: NSPopover?
 
     init(privateMode: Bool, restoredState: WindowState?) {
         self.privateMode = privateMode
@@ -105,7 +105,7 @@ final class BrowserViewController: NSViewController, NSSearchFieldDelegate, WKNa
     private var autoHide: Bool { BrowserPrefsModel.shared.prefs.autoHideToolbar }
 
     /// Keep the bar up while you're typing in the address field.
-    private var keepToolbar: Bool { addressField.currentEditorIsActive || searchExpanded }
+    private var keepToolbar: Bool { addressField.currentEditorIsActive || searchExpanded || listPopover?.isShown == true }
 
     private var globalMoveMonitor: Any?
 
@@ -273,14 +273,10 @@ final class BrowserViewController: NSViewController, NSSearchFieldDelegate, WKNa
             splitView.topAnchor.constraint(equalTo: view.topAnchor), splitView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
             splitView.leadingAnchor.constraint(equalTo: view.leadingAnchor), splitView.trailingAnchor.constraint(equalTo: view.trailingAnchor)
         ])
-        sidebar.view.translatesAutoresizingMaskIntoConstraints = false
-        sidebar.view.widthAnchor.constraint(equalToConstant: 230).isActive = true
-        sidebar.openURL = { [weak self] url in self?.openURL(url) }
+        // Bookmarks and history open as a dropdown panel above the bar (see toggleSidebar), not a sidebar.
+        sidebar.openURL = { [weak self] url in self?.listPopover?.close(); self?.openURL(url) }
         mainView.translatesAutoresizingMaskIntoConstraints = false
-        splitView.addArrangedSubview(sidebar.view)
         splitView.addArrangedSubview(mainView)
-        splitView.setPosition(0, ofDividerAt: 0)
-        sidebar.view.isHidden = true
     }
 
     private func configureToolbar() {
@@ -302,7 +298,7 @@ final class BrowserViewController: NSViewController, NSSearchFieldDelegate, WKNa
         closeLight.hoverColor = { AINCRADTheme.windowClose }
         minLight.hoverColor = { AINCRADTheme.windowMinimize }
         zoomLight.hoverColor = { AINCRADTheme.windowZoom }
-        symbolButton(sidebarButton, symbol: "sidebar.left", action: #selector(toggleSidebarAction), help: "Toggle Sidebar")
+        symbolButton(sidebarButton, symbol: "books.vertical", action: #selector(toggleSidebarAction), help: "Bookmarks and History (⌘B, ⌘Y)")
         symbolButton(backButton, symbol: "chevron.left", action: #selector(goBack), help: "Back (⌘[)")
         symbolButton(forwardButton, symbol: "chevron.right", action: #selector(goForward), help: "Forward (⌘])")
         symbolButton(reloadButton, symbol: "arrow.clockwise", action: #selector(reloadOrStop), help: "Reload (⌘R)")
@@ -676,15 +672,31 @@ final class BrowserViewController: NSViewController, NSSearchFieldDelegate, WKNa
     @objc private func shareAction() { sharePage() }
     @objc private func downloadsAction() { DownloadManager.shared.showWindow() }
 
+    /// The bookmarks and history list: a dropdown panel anchored to its button (above it, since the bar is at the bottom).
     func toggleSidebar() {
-        sidebarVisible.toggle(); sidebar.view.isHidden = !sidebarVisible
-        sidebarButton.isSelected = sidebarVisible
-        splitView.setPosition(sidebarVisible ? 230 : 0, ofDividerAt: 0)
+        if let popover = listPopover, popover.isShown { popover.close(); return }
+        showListPopover()
     }
 
     func showSidebar(section: SidebarSection) {
         sidebar.section = section
-        if !sidebarVisible { toggleSidebar() }
+        showListPopover()
+    }
+
+    private func showListPopover() {
+        setToolbar(shown: true)
+        if let popover = listPopover, popover.isShown { return }
+        let popover = NSPopover()
+        popover.behavior = .transient
+        popover.animates = true
+        popover.delegate = self
+        sidebar.preferredContentSize = NSSize(width: 380, height: 480)
+        popover.contentViewController = sidebar
+        popover.contentSize = NSSize(width: 380, height: 480)
+        listPopover = popover
+        sidebar.applyTheme()
+        sidebarButton.isSelected = true
+        popover.show(relativeTo: sidebarButton.bounds, of: sidebarButton, preferredEdge: .maxY)
     }
 
     func bookmarkCurrentPage() {
@@ -873,4 +885,8 @@ final class PillSearchCell: NSSearchFieldCell {
         r.origin.x += 20; r.size.width -= 40
         return r
     }
+}
+
+extension BrowserViewController: NSPopoverDelegate {
+    func popoverDidClose(_ notification: Notification) { sidebarButton.isSelected = false }
 }

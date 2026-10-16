@@ -3,6 +3,7 @@ import AppKit
 final class SidebarViewController: NSViewController, NSTableViewDataSource, NSTableViewDelegate {
     private let table = NSTableView()
     private let header = NSTextField(labelWithString: "Bookmarks")
+    private let sectionControl = NSSegmentedControl(labels: ["Bookmarks", "History"], trackingMode: .selectOne, target: nil, action: nil)
     private let search = NSSearchField()
     private let removeButton = NSButton()
     private let clearButton = NSButton()
@@ -28,7 +29,12 @@ final class SidebarViewController: NSViewController, NSTableViewDataSource, NSTa
         header.font = AINCRADTheme.displayFont(size: 17)
         header.textColor = AINCRADTheme.panelText
         header.translatesAutoresizingMaskIntoConstraints = false
+        header.isHidden = true
         visual.addSubview(header)
+        sectionControl.target = self; sectionControl.action = #selector(sectionChanged)
+        sectionControl.selectedSegment = section == .bookmarks ? 0 : 1
+        sectionControl.translatesAutoresizingMaskIntoConstraints = false
+        visual.addSubview(sectionControl)
         search.placeholderString = "Search"; search.sendsSearchStringImmediately = true; search.target = self; search.action = #selector(searchChanged); search.translatesAutoresizingMaskIntoConstraints = false
         visual.addSubview(search)
 
@@ -54,7 +60,8 @@ final class SidebarViewController: NSViewController, NSTableViewDataSource, NSTa
         NSLayoutConstraint.activate([
             header.topAnchor.constraint(equalTo: visual.topAnchor, constant: 22),
             header.leadingAnchor.constraint(equalTo: visual.leadingAnchor, constant: 16),
-            search.topAnchor.constraint(equalTo: header.bottomAnchor, constant: 10), search.leadingAnchor.constraint(equalTo: visual.leadingAnchor, constant: 12), search.trailingAnchor.constraint(equalTo: visual.trailingAnchor, constant: -12),
+            sectionControl.topAnchor.constraint(equalTo: visual.topAnchor, constant: 16), sectionControl.leadingAnchor.constraint(equalTo: visual.leadingAnchor, constant: 12), sectionControl.trailingAnchor.constraint(equalTo: visual.trailingAnchor, constant: -12),
+            search.topAnchor.constraint(equalTo: sectionControl.bottomAnchor, constant: 10), search.leadingAnchor.constraint(equalTo: visual.leadingAnchor, constant: 12), search.trailingAnchor.constraint(equalTo: visual.trailingAnchor, constant: -12),
             scroll.topAnchor.constraint(equalTo: search.bottomAnchor, constant: 8),
             scroll.leadingAnchor.constraint(equalTo: visual.leadingAnchor), scroll.trailingAnchor.constraint(equalTo: visual.trailingAnchor),
             scroll.bottomAnchor.constraint(equalTo: actions.topAnchor, constant: -8),
@@ -63,10 +70,12 @@ final class SidebarViewController: NSViewController, NSTableViewDataSource, NSTa
         NotificationCenter.default.addObserver(self, selector: #selector(reloadNotification), name: .browserDataChanged, object: nil)
     }
 
+    @objc private func sectionChanged() { section = sectionControl.selectedSegment == 0 ? .bookmarks : .history }
     @objc private func reloadNotification() { reload() }
     private func reload() {
         guard isViewLoaded else { return }
         header.stringValue = section == .bookmarks ? "Bookmarks" : "History"
+        sectionControl.selectedSegment = section == .bookmarks ? 0 : 1
         clearButton.isHidden = section == .bookmarks
         table.reloadData()
     }
