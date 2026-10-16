@@ -52,7 +52,7 @@ is installed too, the two respond to each other:
 
 - **Same look.** The browser reads AINCRAD's active theme (colours, Orbitron/Rajdhani fonts) and
   your player name, and repaints the moment you switch themes in AINCRAD.
-- **Tabs in the launcher.** AINCRAD's Files › AINCRAD Browser lists your open tabs (click one to
+- **Tabs in the launcher.** AINCRAD's the Web circle lists your open tabs (click one to
   jump to it), bookmarks and history, plus New Tab and New Private Window.
 - **Links.** Web links opened from the launcher go to AINCRAD Browser (a switch in AINCRAD's settings).
 - **Download bubbles.** Finished downloads show up as SAO notification bubbles.
