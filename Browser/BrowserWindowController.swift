@@ -16,7 +16,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         window.titleVisibility = .hidden
         window.titlebarAppearsTransparent = true
         window.isMovableByWindowBackground = false
-        window.minSize = NSSize(width: 980, height: 560)
+        window.minSize = NSSize(width: 1200, height: 600)
         // See-through behind the floating bar; the page panel and buttons carry their own surfaces.
         window.isOpaque = false
         window.backgroundColor = .clear
@@ -45,9 +45,9 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
     static func defaultFrame() -> NSRect {
         let screen = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
         switch BrowserPrefsModel.shared.prefs.windowSize {
-        case "compact": return NSRect(x: 0, y: 0, width: min(1000, screen.width), height: min(680, screen.height))
+        case "compact": return NSRect(x: 0, y: 0, width: min(1200, screen.width), height: min(720, screen.height))
         case "large": return NSRect(x: 0, y: 0, width: min(1440, screen.width * 0.94), height: min(940, screen.height * 0.94))
-        default: return NSRect(x: 0, y: 0, width: min(max(1100, screen.width * 0.8), screen.width), height: min(max(720, screen.height * 0.8), screen.height))
+        default: return NSRect(x: 0, y: 0, width: min(max(1280, screen.width * 0.92), screen.width), height: min(max(720, screen.height * 0.88), screen.height))
         }
     }
 

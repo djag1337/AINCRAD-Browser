@@ -49,7 +49,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case "open":
             guard let target = value("url").flatMap(URL.init(string:)), ["http", "https"].contains(target.scheme ?? "") else { return }
             if let browser = windows.last(where: { !$0.browser.privateMode })?.browser {
-                browser.newTab(); browser.openURL(target)
+                browser.newTab(focusAddress: false); browser.openURL(target)
                 browser.view.window?.makeKeyAndOrderFront(nil)
             } else { openWindow(privateMode: false, url: target) }
         case "tab":

@@ -68,7 +68,7 @@ final class TabStripView: NSView {
         let pinnedCount = items.filter(\.pinned).count
         let normalCount = items.count - pinnedCount
         let available = bounds.width - gap * CGFloat(items.count - 1) - pinnedWidth * CGFloat(pinnedCount)
-        let width = normalCount == 0 ? 0 : max(96, min(220, available / CGFloat(normalCount)))
+        let width = normalCount == 0 ? 0 : max(150, min(240, available / CGFloat(normalCount)))
         var x: CGFloat = 0
         for (i, v) in views.enumerated() {
             let w = items[i].pinned ? pinnedWidth : width
@@ -112,7 +112,7 @@ private final class TabItemView: NSView {
         label.lineBreakMode = .byTruncatingTail
         label.translatesAutoresizingMaskIntoConstraints = false
         close.isBordered = false
-        close.image = NSImage(systemSymbolName: "xmark", accessibilityDescription: "Close Tab")?.withSymbolConfiguration(.init(pointSize: 10, weight: .bold))
+        close.image = NSImage(systemSymbolName: "xmark", accessibilityDescription: "Close Tab")?.withSymbolConfiguration(.init(pointSize: 12, weight: .bold))
         close.target = self; close.action = #selector(closeTapped)
         close.toolTip = "Close Tab (⌘W)"
         close.translatesAutoresizingMaskIntoConstraints = false
@@ -121,7 +121,7 @@ private final class TabItemView: NSView {
             label.centerYAnchor.constraint(equalTo: centerYAnchor),
             label.trailingAnchor.constraint(equalTo: close.leadingAnchor, constant: -4),
             close.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8), close.centerYAnchor.constraint(equalTo: centerYAnchor),
-            close.widthAnchor.constraint(equalToConstant: 20), close.heightAnchor.constraint(equalToConstant: 20),
+            close.widthAnchor.constraint(equalToConstant: 24), close.heightAnchor.constraint(equalToConstant: 24),
         ])
     }
 
@@ -163,7 +163,7 @@ private final class TabItemView: NSView {
 
     private func refresh() {
         let t = AINCRADTheme.self
-        label.font = t.bodyFont(size: min(18, t.bodySize), weight: .medium)
+        label.font = t.bodyFont(size: t.tabFontSize, weight: .medium)
         close.isHidden = pinned || !(isSelected || hovering)
         layer?.cornerRadius = t.cornerRadius
         layer?.borderWidth = t.borderWidth

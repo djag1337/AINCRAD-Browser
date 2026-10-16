@@ -37,6 +37,10 @@ final class BrowserViewController: NSViewController, NSSearchFieldDelegate, WKNa
     private let zoomLight = CircleButton(factor: 0.72)
     private var addressLeading: NSLayoutConstraint?
     private var searchExpanded = false
+    /// A frosted band behind the bar that grows down from the top edge when the bar appears.
+    private let blurBand = NSVisualEffectView()
+    private var blurHeight: NSLayoutConstraint?
+    private var bandHeight: CGFloat { toolbarHeight + 40 }
     private var webLeading: NSLayoutConstraint?
     private var webTrailing: NSLayoutConstraint?
     private var webBottom: NSLayoutConstraint?
@@ -139,6 +143,13 @@ final class BrowserViewController: NSViewController, NSSearchFieldDelegate, WKNa
         guard shown != toolbarShown, isViewLoaded else { return }
         toolbarShown = shown
         if shown { toolbar.isHidden = false }
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = animated ? 0.3 : 0
+            context.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            context.allowsImplicitAnimation = true
+            blurHeight?.animator().constant = shown ? bandHeight : 0
+            blurBand.animator().alphaValue = shown ? 1 : 0
+        }
         toolbar.layoutSubtreeIfNeeded()
         let items: [NSView] = [closeLight, minLight, zoomLight, aincradButton, sidebarButton, backButton, forwardButton, reloadButton,
                                searchButton, downloadsButton, shareButton, bookmarkButton, addTabButton, tabControl, addressField, privacyBadge]
@@ -215,8 +226,11 @@ final class BrowserViewController: NSViewController, NSSearchFieldDelegate, WKNa
         allButtons.forEach { $0.updateSize() }
         addressField.constraints.first { $0.firstAttribute == .height }?.constant = AINCRADTheme.buttonSize
         addressField.layer?.cornerRadius = AINCRADTheme.buttonSize / 2
-        tabControl.constraints.first { $0.firstAttribute == .height }?.constant = AINCRADTheme.itemHeight
+        tabControl.constraints.first { $0.firstAttribute == .height }?.constant = AINCRADTheme.tabHeight
         toolbarHeightConstraint?.constant = toolbarHeight
+        if toolbarShown { blurHeight?.constant = bandHeight }
+        blurBand.isHidden = !BrowserPrefsModel.shared.prefs.floatingToolbar
+        blurBand.appearance = NSAppearance(named: dark ? .vibrantDark : .vibrantLight)
         webTopConstraint?.constant = panelTop
         webLeading?.constant = panelInset; webTrailing?.constant = -panelInset
         let lightD = (AINCRADTheme.buttonSize * 0.72).rounded()
@@ -232,7 +246,7 @@ final class BrowserViewController: NSViewController, NSSearchFieldDelegate, WKNa
         allButtons.forEach { $0.restyle() }
         aincradButton.image = AINCRADTheme.makeMark(size: 18)
         addressField.layer?.borderColor = AINCRADTheme.accent.cgColor
-        addressField.font = AINCRADTheme.bodyFont(size: max(15, AINCRADTheme.bodySize * 0.8))
+        addressField.font = AINCRADTheme.bodyFont(size: AINCRADTheme.tabFontSize)
         tabControl.applyTheme()
         privacyBadge.textColor = AINCRADTheme.accent
         privacyBadge.font = AINCRADTheme.displayFont(size: 9)
@@ -307,7 +321,7 @@ final class BrowserViewController: NSViewController, NSSearchFieldDelegate, WKNa
         addressField.layer?.cornerRadius = AINCRADTheme.buttonSize / 2
         addressField.layer?.borderWidth = 1.5
         addressField.layer?.borderColor = AINCRADTheme.accent.cgColor
-        addressField.font = AINCRADTheme.bodyFont(size: max(15, AINCRADTheme.bodySize * 0.8))
+        addressField.font = AINCRADTheme.bodyFont(size: AINCRADTheme.tabFontSize)
         addressField.alphaValue = 0
         addressField.isHidden = true
 
@@ -325,11 +339,11 @@ final class BrowserViewController: NSViewController, NSSearchFieldDelegate, WKNa
         privacyBadge.translatesAutoresizingMaskIntoConstraints = false
 
         let lights = NSStackView(views: [closeLight, minLight, zoomLight])
-        lights.orientation = .horizontal; lights.spacing = 12; lights.translatesAutoresizingMaskIntoConstraints = false
+        lights.orientation = .horizontal; lights.spacing = 8; lights.translatesAutoresizingMaskIntoConstraints = false
         let nav = NSStackView(views: [aincradButton, sidebarButton, backButton, forwardButton, reloadButton])
-        nav.orientation = .horizontal; nav.spacing = 12; nav.translatesAutoresizingMaskIntoConstraints = false
+        nav.orientation = .horizontal; nav.spacing = 8; nav.translatesAutoresizingMaskIntoConstraints = false
         let right = NSStackView(views: [privacyBadge, searchButton, downloadsButton, shareButton, bookmarkButton, addTabButton])
-        right.orientation = .horizontal; right.spacing = 12; right.translatesAutoresizingMaskIntoConstraints = false
+        right.orientation = .horizontal; right.spacing = 8; right.translatesAutoresizingMaskIntoConstraints = false
         [lights, nav, tabControl, addressField, right, progress].forEach(toolbar.addSubview)
 
         addressLeading = addressField.leadingAnchor.constraint(equalTo: tabControl.leadingAnchor, constant: 0)
@@ -339,10 +353,10 @@ final class BrowserViewController: NSViewController, NSSearchFieldDelegate, WKNa
         NSLayoutConstraint.activate([
             toolbar.topAnchor.constraint(equalTo: mainView.topAnchor), toolbar.leadingAnchor.constraint(equalTo: mainView.leadingAnchor), toolbar.trailingAnchor.constraint(equalTo: mainView.trailingAnchor), toolbar.heightAnchor.constraint(equalToConstant: toolbarHeight),
             lightsLeading!, lights.centerYAnchor.constraint(equalTo: rowCenter),
-            nav.leadingAnchor.constraint(equalTo: lights.trailingAnchor, constant: 20), nav.centerYAnchor.constraint(equalTo: rowCenter),
+            nav.leadingAnchor.constraint(equalTo: lights.trailingAnchor, constant: 14), nav.centerYAnchor.constraint(equalTo: rowCenter),
             rightTrailing!, right.centerYAnchor.constraint(equalTo: rowCenter),
-            tabControl.leadingAnchor.constraint(equalTo: nav.trailingAnchor, constant: 20), tabControl.trailingAnchor.constraint(equalTo: right.leadingAnchor, constant: -20),
-            tabControl.centerYAnchor.constraint(equalTo: rowCenter), tabControl.heightAnchor.constraint(equalToConstant: AINCRADTheme.itemHeight),
+            tabControl.leadingAnchor.constraint(equalTo: nav.trailingAnchor, constant: 14), tabControl.trailingAnchor.constraint(equalTo: right.leadingAnchor, constant: -14),
+            tabControl.centerYAnchor.constraint(equalTo: rowCenter), tabControl.heightAnchor.constraint(equalToConstant: AINCRADTheme.tabHeight),
             addressLeading!, addressField.trailingAnchor.constraint(equalTo: tabControl.trailingAnchor), addressField.centerYAnchor.constraint(equalTo: rowCenter),
             addressField.heightAnchor.constraint(equalToConstant: AINCRADTheme.buttonSize),
             progress.leadingAnchor.constraint(equalTo: toolbar.leadingAnchor), progress.trailingAnchor.constraint(equalTo: toolbar.trailingAnchor), progress.bottomAnchor.constraint(equalTo: toolbar.bottomAnchor), progress.heightAnchor.constraint(equalToConstant: 2),
@@ -408,6 +422,26 @@ final class BrowserViewController: NSViewController, NSSearchFieldDelegate, WKNa
         // Below the toolbar in z-order, so the buttons overlap the panel's border.
         mainView.addSubview(webContainer, positioned: .below, relativeTo: toolbar)
         NSLayoutConstraint.activate([webTopConstraint!, webLeading!, webTrailing!, webBottom!])
+
+        blurBand.material = .hudWindow
+        blurBand.blendingMode = .behindWindow
+        blurBand.state = .active
+        blurBand.translatesAutoresizingMaskIntoConstraints = false
+        // Strong at the top edge, fading out below the buttons.
+        let fade = NSImage(size: NSSize(width: 4, height: 128), flipped: false) { rect in
+            NSGradient(colorsAndLocations: (NSColor.black, 0), (NSColor.black.withAlphaComponent(0.92), 0.6), (NSColor.black.withAlphaComponent(0), 1))?
+                .draw(in: rect, angle: 270)
+            return true
+        }
+        fade.capInsets = NSEdgeInsets(top: 0, left: 0, bottom: 0, right: 0)
+        fade.resizingMode = .stretch
+        blurBand.maskImage = fade
+        mainView.addSubview(blurBand, positioned: .below, relativeTo: toolbar)
+        blurHeight = blurBand.heightAnchor.constraint(equalToConstant: bandHeight)
+        NSLayoutConstraint.activate([
+            blurBand.topAnchor.constraint(equalTo: mainView.topAnchor), blurBand.leadingAnchor.constraint(equalTo: mainView.leadingAnchor),
+            blurBand.trailingAnchor.constraint(equalTo: mainView.trailingAnchor), blurHeight!,
+        ])
     }
 
     private func createTab(state: TabState?, select: Bool, blank: Bool = false) {
@@ -426,7 +460,10 @@ final class BrowserViewController: NSViewController, NSSearchFieldDelegate, WKNa
         if select { selectTab(at: tabs.count - 1) }
     }
 
-    func newTab() { createTab(state: nil, select: true, blank: BrowserPrefsModel.shared.prefs.newTabPage == "blank"); focusAddressBar() }
+    func newTab(focusAddress: Bool = true) {
+        createTab(state: nil, select: true, blank: BrowserPrefsModel.shared.prefs.newTabPage == "blank")
+        if focusAddress { focusAddressBar() }
+    }
     @objc private func addTabAction() { newTab() }
 
     var currentIndex: Int { selectedIndex }
@@ -696,6 +733,11 @@ final class BrowserViewController: NSViewController, NSSearchFieldDelegate, WKNa
 
     func windowState() -> WindowState { WindowState(tabs: tabs.map(\.state), selectedIndex: selectedIndex) }
     private func notifyStateChanged() { NotificationCenter.default.post(name: .browserWindowStateChanged, object: nil) }
+
+    /// A page started loading: put the tabs back unless you're still typing in the address pill.
+    func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
+        if searchExpanded, !addressField.currentEditorIsActive, tabs.indices.contains(selectedIndex), tabs[selectedIndex].webView === webView { setSearch(expanded: false) }
+    }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         guard let index = tabs.firstIndex(where: { $0.webView === webView }) else { return }
