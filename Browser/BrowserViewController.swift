@@ -70,6 +70,7 @@ final class BrowserViewController: NSViewController, NSSearchFieldDelegate, WKNa
         NotificationCenter.default.addObserver(self, selector: #selector(refreshStartPages), name: .browserDataChanged, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(themeChanged), name: AINCRADTheme.changed, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(prefsChanged), name: .browserPrefsChanged, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(downloadStartedNotice), name: .downloadStarted, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(rulesReady), name: .browserFeaturesReady, object: nil)
     }
 
@@ -109,7 +110,7 @@ final class BrowserViewController: NSViewController, NSSearchFieldDelegate, WKNa
     private var autoHide: Bool { BrowserPrefsModel.shared.prefs.autoHideToolbar }
 
     /// Keep the bar up while you're typing in the address field.
-    private var keepToolbar: Bool { addressField.currentEditorIsActive || searchExpanded || listPopover?.isShown == true }
+    private var keepToolbar: Bool { addressField.currentEditorIsActive || searchExpanded || listPopover?.isShown == true || downloadsPopover?.isShown == true }
 
     private var globalMoveMonitor: Any?
 
@@ -703,7 +704,33 @@ final class BrowserViewController: NSViewController, NSSearchFieldDelegate, WKNa
     @objc private func toggleSidebarAction() { toggleSidebar() }
     @objc private func bookmarkAction() { bookmarkCurrentPage() }
     @objc private func shareAction() { sharePage() }
-    @objc private func downloadsAction() { DownloadManager.shared.showWindow() }
+    @objc private func downloadsAction() { toggleDownloads() }
+
+    private var downloadsPopover: NSPopover?
+
+    /// Downloads drop down from their button, like bookmarks and history.
+    func toggleDownloads() {
+        if let popover = downloadsPopover, popover.isShown { popover.close(); return }
+        showDownloadsPopover()
+    }
+
+    private func showDownloadsPopover() {
+        guard view.window != nil else { return }
+        setToolbar(shown: true)
+        if let popover = downloadsPopover, popover.isShown { return }
+        let popover = NSPopover()
+        popover.behavior = .transient; popover.animates = true
+        popover.contentViewController = DownloadsListViewController()
+        popover.contentSize = NSSize(width: 420, height: 360)
+        downloadsPopover = popover
+        popover.show(relativeTo: downloadsButton.bounds, of: downloadsButton, preferredEdge: .maxY)
+    }
+
+    /// A new download pops the list open on the window in front, so you can see it start.
+    @objc private func downloadStartedNotice() {
+        guard view.window?.isKeyWindow == true else { return }
+        showDownloadsPopover()
+    }
 
     /// The bookmarks and history list: a dropdown panel anchored to its button (above it, since the bar is at the bottom).
     func toggleSidebar() {

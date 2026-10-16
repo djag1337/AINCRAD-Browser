@@ -163,7 +163,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func printPage(_ sender: Any?) { currentBrowser()?.printPage() }
     @objc private func savePDF(_ sender: Any?) { currentBrowser()?.savePageAsPDF() }
     @objc private func copyLink(_ sender: Any?) { currentBrowser()?.copyPageLink() }
-    @objc private func showDownloads(_ sender: Any?) { DownloadManager.shared.showWindow() }
+    @objc private func showDownloads(_ sender: Any?) { currentBrowser()?.toggleDownloads() }
     /// With AINCRAD installed the browser's settings are a page of AINCRAD Settings; otherwise the same page opens here.
     @objc private func showSettings(_ sender: Any?) {
         if NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.djag.aincrad") != nil, let url = URL(string: "aincrad://settings/browser") {
