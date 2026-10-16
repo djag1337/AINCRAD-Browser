@@ -90,36 +90,38 @@ private final class TabItemView: NSView {
     var onClose: (() -> Void)?
     var menuProvider: (() -> NSMenu?)?
 
+    private let fill = CAGradientLayer()
+    private let shine = CALayer()
+    private let badge = CALayer()
     private let icon = NSImageView()
     private let label = NSTextField(labelWithString: "")
     private let close = NSButton()
     private var hovering = false { didSet { refresh() } }
     private var isSelected = false
     private var pinned = false
+    private var hasFavicon = false
 
     override init(frame: NSRect) {
         super.init(frame: frame)
         wantsLayer = true
-        layer?.cornerRadius = AINCRADTheme.cornerRadius
-        layer?.borderWidth = AINCRADTheme.borderWidth
+        layer?.addSublayer(fill)
+        layer?.addSublayer(shine)
+        layer?.addSublayer(badge)
         icon.translatesAutoresizingMaskIntoConstraints = false
         icon.imageScaling = .scaleProportionallyDown
         label.lineBreakMode = .byTruncatingTail
         label.translatesAutoresizingMaskIntoConstraints = false
-        label.cell?.isScrollable = false
         close.isBordered = false
-        close.image = NSImage(systemSymbolName: "xmark", accessibilityDescription: "Close Tab")?.withSymbolConfiguration(.init(pointSize: 9, weight: .bold))
+        close.image = NSImage(systemSymbolName: "xmark", accessibilityDescription: "Close Tab")?.withSymbolConfiguration(.init(pointSize: 10, weight: .bold))
         close.target = self; close.action = #selector(closeTapped)
         close.toolTip = "Close Tab (⌘W)"
         close.translatesAutoresizingMaskIntoConstraints = false
         [icon, label, close].forEach(addSubview)
         NSLayoutConstraint.activate([
-            icon.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 9), icon.centerYAnchor.constraint(equalTo: centerYAnchor),
-            icon.widthAnchor.constraint(equalToConstant: 14), icon.heightAnchor.constraint(equalToConstant: 14),
-            label.leadingAnchor.constraint(equalTo: icon.trailingAnchor, constant: 7), label.centerYAnchor.constraint(equalTo: centerYAnchor),
+            label.centerYAnchor.constraint(equalTo: centerYAnchor),
             label.trailingAnchor.constraint(equalTo: close.leadingAnchor, constant: -4),
-            close.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -6), close.centerYAnchor.constraint(equalTo: centerYAnchor),
-            close.widthAnchor.constraint(equalToConstant: 18), close.heightAnchor.constraint(equalToConstant: 18),
+            close.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8), close.centerYAnchor.constraint(equalTo: centerYAnchor),
+            close.widthAnchor.constraint(equalToConstant: 20), close.heightAnchor.constraint(equalToConstant: 20),
         ])
     }
 
@@ -128,35 +130,67 @@ private final class TabItemView: NSView {
     func configure(_ item: TabStripView.Item, selected: Bool) {
         isSelected = selected
         pinned = item.pinned
+        hasFavicon = item.icon != nil
         label.stringValue = item.title
         label.isHidden = item.pinned
-        icon.image = item.icon ?? NSImage(systemSymbolName: item.pinned ? "pin.fill" : "globe", accessibilityDescription: nil)
-        icon.contentTintColor = item.icon == nil ? (selected ? AINCRADTheme.accentText : AINCRADTheme.panelText.withAlphaComponent(0.7)) : nil
+        icon.image = item.icon ?? AINCRADTheme.glyph(item.pinned ? "pin.fill" : "globe")
         toolTip = item.title
+        needsLayout = true
         refresh()
+    }
+
+    /// Rows like the launcher's: a round badge with the icon, then the title in the theme's body font.
+    override func layout() {
+        super.layout()
+        let t = AINCRADTheme.self
+        let h = bounds.height
+        fill.frame = bounds
+        fill.cornerRadius = t.cornerRadius
+        fill.masksToBounds = true
+        shine.frame = CGRect(x: t.cornerRadius, y: h - 1.5, width: max(0, bounds.width - 2 * t.cornerRadius), height: 1)
+        shine.backgroundColor = NSColor.white.withAlphaComponent(t.shine).cgColor
+        let b = (h * 0.72).rounded()
+        let badgeFrame = CGRect(x: 7, y: ((h - b) / 2).rounded(), width: b, height: b)
+        badge.frame = badgeFrame
+        badge.cornerRadius = b / 2
+        badge.isHidden = hasFavicon
+        let inset = hasFavicon ? 0 : (b * 0.22).rounded()
+        icon.frame = badgeFrame.insetBy(dx: inset, dy: inset)
+        layer?.shadowPath = CGPath(roundedRect: bounds, cornerWidth: t.cornerRadius, cornerHeight: t.cornerRadius, transform: nil)
+        for c in constraints where c.firstItem === label && c.firstAttribute == .leading { removeConstraint(c) }
+        label.leadingAnchor.constraint(equalTo: leadingAnchor, constant: badgeFrame.maxX + 9).isActive = true
     }
 
     private func refresh() {
         let t = AINCRADTheme.self
-        label.font = t.bodyFont(size: max(13, t.bodySize * 0.7), weight: .semibold)
-        layer?.cornerRadius = t.cornerRadius
-        label.textColor = isSelected ? t.accentText : t.panelText
-        close.contentTintColor = isSelected ? t.accentText : t.panelText
+        label.font = t.bodyFont(size: min(18, t.bodySize), weight: .medium)
         close.isHidden = pinned || !(isSelected || hovering)
-        layer?.backgroundColor = (isSelected ? t.accent : (hovering ? t.hover : t.circle)).cgColor
-        layer?.borderColor = (isSelected || hovering ? t.accent : t.circleBorder).cgColor
+        layer?.cornerRadius = t.cornerRadius
         layer?.borderWidth = t.borderWidth
-        layer?.shadowColor = (isSelected || hovering ? t.accent : NSColor.black).cgColor
-        layer?.shadowOpacity = isSelected || hovering ? t.glowOpacity * 0.7 : t.shadowOpacity * 0.5
-        layer?.shadowRadius = isSelected || hovering ? t.glow * 0.6 : t.shadowRadius * 0.4
-        layer?.shadowOffset = .zero
         layer?.masksToBounds = false
+        let state: (fill: NSColor, border: NSColor, text: NSColor, badge: NSColor, glyph: NSColor, glow: Bool)
+        if isSelected { state = (t.accent, t.accent, t.accentText, t.accentText, t.accent, true) }
+        else if hovering { state = (t.hover, t.accent, t.panelText, t.accent, t.iconGlyph, false) }
+        else { state = (t.panel, t.panelBorder, t.panelText, t.iconBadge, t.iconGlyph, false) }
+        fill.colors = AINCRADTheme.shade(state.fill)
+        layer?.borderColor = state.border.cgColor
+        label.textColor = state.text
+        close.contentTintColor = state.text
+        badge.backgroundColor = state.badge.cgColor
+        icon.contentTintColor = hasFavicon ? nil : state.glyph
+        if state.glow {
+            layer?.shadowColor = t.accent.cgColor; layer?.shadowOpacity = t.glowOpacity
+            layer?.shadowRadius = t.glow; layer?.shadowOffset = .zero
+        } else {
+            layer?.shadowColor = t.shadowColor.cgColor; layer?.shadowOpacity = t.shadowOpacity
+            layer?.shadowRadius = t.shadowRadius; layer?.shadowOffset = CGSize(width: 0, height: -2)
+        }
     }
 
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
         trackingAreas.forEach(removeTrackingArea)
-        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeInKeyWindow], owner: self))
+        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways], owner: self))
     }
 
     override func mouseEntered(with event: NSEvent) { hovering = true }
@@ -164,40 +198,141 @@ private final class TabItemView: NSView {
     override func mouseDown(with event: NSEvent) { onSelect?() }
     override func otherMouseUp(with event: NSEvent) { if event.buttonNumber == 2 { onClose?() } }
     override func menu(for event: NSEvent) -> NSMenu? { menuProvider?() }
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
     @objc private func closeTapped() { onClose?() }
 }
 
-/// A launcher-style round button: a glass circle that lights up in the accent colour under the pointer.
-final class CircleButton: NSButton {
+/// A launcher circle: gradient fill, themed border, an accent ring when hovered, accent fill and glow when
+/// selected, the icon at 46% of the diameter in the theme's icon colour. Same states as the launcher's.
+final class CircleButton: NSControl {
+    var image: NSImage? { didSet { renderIcon() } }
+    var isSelected = false { didSet { restyle() } }
+    /// Colour used for the hover ring and tint instead of the theme accent (the window buttons use their own).
+    var hoverColor: () -> NSColor? = { nil }
+    private(set) var factor: CGFloat = 1
+
+    private let fill = CAGradientLayer()
+    private let ring = CALayer()
+    private let iconLayer = CALayer()
     private var hovering = false { didSet { restyle() } }
+    private var pressed = false { didSet { restyle() } }
+    private var widthC: NSLayoutConstraint?
+    private var heightC: NSLayoutConstraint?
+    private var lastTint: NSColor?
 
     override var isEnabled: Bool { didSet { alphaValue = isEnabled ? 1 : 0.4 } }
+    override var toolTip: String? { didSet { setAccessibilityLabel(toolTip) } }
+    override var mouseDownCanMoveWindow: Bool { false }
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+    convenience init(factor: CGFloat) { self.init(frame: .zero); self.factor = factor; updateSize() }
+    convenience init() { self.init(frame: .zero) }
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        wantsLayer = true
+        translatesAutoresizingMaskIntoConstraints = false
+        fill.masksToBounds = true
+        layer?.addSublayer(fill)
+        layer?.addSublayer(ring)
+        layer?.addSublayer(iconLayer)
+        iconLayer.contentsGravity = .resizeAspect
+        widthC = widthAnchor.constraint(equalToConstant: AINCRADTheme.buttonSize)
+        heightC = heightAnchor.constraint(equalToConstant: AINCRADTheme.buttonSize)
+        widthC?.isActive = true; heightC?.isActive = true
+        setAccessibilityRole(.button)
+    }
+
+    required init?(coder: NSCoder) { fatalError("not used") }
+
+    func updateSize() {
+        let d = (AINCRADTheme.buttonSize * factor).rounded()
+        widthC?.constant = d; heightC?.constant = d
+        needsLayout = true
+    }
+
+    override func layout() {
+        super.layout()
+        let d = bounds.width
+        layer?.cornerRadius = d / 2
+        fill.frame = bounds
+        fill.cornerRadius = d / 2
+        ring.frame = bounds.insetBy(dx: -5, dy: -5)
+        ring.cornerRadius = (d + 10) / 2
+        let s = (d * 0.46).rounded()
+        iconLayer.frame = CGRect(x: (d - s) / 2, y: (d - s) / 2, width: s, height: s)
+        layer?.shadowPath = CGPath(ellipseIn: bounds, transform: nil)
+        restyle()
+    }
 
     func restyle() {
         let t = AINCRADTheme.self
-        isBordered = false
-        wantsLayer = true
-        contentTintColor = hovering ? t.accent : t.circleIcon
-        layer?.cornerRadius = min(bounds.width, bounds.height) / 2
-        layer?.backgroundColor = (hovering ? t.hover : t.circle).cgColor
-        layer?.borderWidth = hovering ? max(2, t.borderWidth) : t.borderWidth
-        layer?.borderColor = (hovering ? t.accent : t.circleBorder).cgColor
-        // Like the launcher: a soft shadow at rest, an accent glow when the pointer is on it.
-        layer?.shadowColor = (hovering ? t.accent : NSColor.black).cgColor
-        layer?.shadowOpacity = hovering ? t.glowOpacity : t.shadowOpacity * 0.8
-        layer?.shadowRadius = hovering ? t.glow : t.shadowRadius * 0.5
-        layer?.shadowOffset = hovering ? .zero : CGSize(width: 0, height: -2)
-        layer?.masksToBounds = false
+        let accent = hoverColor() ?? t.accent
+        let tint: NSColor
+        layer?.borderWidth = t.borderWidth
+        layer?.borderColor = t.circleBorder.cgColor
+        ring.borderWidth = t.ringWidth
+        ring.borderColor = accent.cgColor
+        if isSelected {
+            fill.colors = AINCRADTheme.shade(accent)
+            ring.opacity = 1
+            tint = t.accentText
+            layer?.shadowColor = accent.cgColor; layer?.shadowOpacity = t.glowOpacity
+            layer?.shadowRadius = t.glow; layer?.shadowOffset = .zero
+        } else if hovering || pressed {
+            fill.colors = AINCRADTheme.shade(t.hover)
+            ring.opacity = 0.6
+            tint = accent
+            normalShadow()
+        } else {
+            fill.colors = AINCRADTheme.shade(t.circle)
+            ring.opacity = 0
+            tint = t.circleIcon
+            normalShadow()
+        }
+        if lastTint != tint { lastTint = tint; renderIcon() }
     }
 
-    override func layout() { super.layout(); restyle() }
+    private func normalShadow() {
+        let t = AINCRADTheme.self
+        layer?.shadowColor = t.shadowColor.cgColor; layer?.shadowOpacity = t.shadowOpacity
+        layer?.shadowRadius = t.shadowRadius; layer?.shadowOffset = CGSize(width: 0, height: -2)
+    }
+
+    private func renderIcon() {
+        guard let image, let tint = lastTint ?? Optional(AINCRADTheme.circleIcon) else { iconLayer.contents = nil; return }
+        let scale = window?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2
+        let side = max(iconLayer.bounds.width, 12)
+        let size = NSSize(width: side, height: side)
+        let tinted = NSImage(size: size, flipped: false) { rect in
+            let ratio = image.size.width / max(image.size.height, 1)
+            var fit = rect
+            if ratio > 1 { fit.size.height = rect.width / ratio; fit.origin.y = (rect.height - fit.height) / 2 }
+            else { fit.size.width = rect.height * ratio; fit.origin.x = (rect.width - fit.width) / 2 }
+            image.draw(in: fit)
+            tint.set()
+            rect.fill(using: .sourceAtop)
+            return true
+        }
+        var rect = NSRect(origin: .zero, size: NSSize(width: side * scale, height: side * scale))
+        iconLayer.contents = tinted.cgImage(forProposedRect: &rect, context: nil, hints: nil)
+        iconLayer.contentsScale = scale
+    }
+
+    override func viewDidMoveToWindow() { super.viewDidMoveToWindow(); lastTint = nil; restyle() }
 
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
         trackingAreas.forEach(removeTrackingArea)
-        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeInKeyWindow], owner: self))
+        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways], owner: self))
     }
 
-    override func mouseEntered(with event: NSEvent) { hovering = true }
-    override func mouseExited(with event: NSEvent) { hovering = false }
+    override func mouseEntered(with event: NSEvent) { if isEnabled { hovering = true } }
+    override func mouseExited(with event: NSEvent) { hovering = false; pressed = false }
+    override func mouseDown(with event: NSEvent) { if isEnabled { pressed = true } }
+    override func mouseUp(with event: NSEvent) {
+        let inside = bounds.contains(convert(event.locationInWindow, from: nil))
+        pressed = false
+        if inside, isEnabled { sendAction(action, to: target) }
+    }
 }

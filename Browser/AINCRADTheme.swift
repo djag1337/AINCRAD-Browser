@@ -24,6 +24,16 @@ enum AINCRADTheme {
     private(set) static var shadowRadius: CGFloat = 10
     private(set) static var shadowOpacity: Float = 0.35
     private(set) static var bodySize: CGFloat = 20
+    private(set) static var shadowColor = NSColor(white: 0, alpha: 0.36)
+    private(set) static var iconBadge = NSColor(srgbRed: 0.365, green: 0.38, blue: 0.412, alpha: 1)
+    private(set) static var iconGlyph = NSColor.white
+    private(set) static var windowClose = NSColor(srgbRed: 1, green: 0.373, blue: 0.341, alpha: 1)
+    private(set) static var windowMinimize = NSColor(srgbRed: 0.996, green: 0.737, blue: 0.18, alpha: 1)
+    private(set) static var windowZoom = NSColor(srgbRed: 0.157, green: 0.784, blue: 0.251, alpha: 1)
+    private(set) static var gradient: CGFloat = 0.07
+    private(set) static var shine: CGFloat = 0.7
+    private(set) static var itemHeight: CGFloat = 38
+    private(set) static var ringWidth: CGFloat = 2
     private(set) static var accentText = NSColor.white
     private(set) static var bodyFamily = "Rajdhani"
     private(set) static var displayFamily = "Orbitron"
@@ -93,6 +103,16 @@ enum AINCRADTheme {
         shadowRadius = CGFloat(num(effects, "shadowRadius", 10))
         shadowOpacity = Float(num(effects, "shadowOpacity", 0.35))
         bodySize = CGFloat(num(font, "size", 20))
+        shadowColor = color(colors["shadow"]) ?? NSColor(white: 0, alpha: 0.36)
+        iconBadge = color(colors["iconBadge"]) ?? NSColor(srgbRed: 0.365, green: 0.38, blue: 0.412, alpha: 1)
+        iconGlyph = color(colors["iconGlyph"]) ?? .white
+        windowClose = color(colors["windowClose"]) ?? NSColor(srgbRed: 1, green: 0.373, blue: 0.341, alpha: 1)
+        windowMinimize = color(colors["windowMinimize"]) ?? NSColor(srgbRed: 0.996, green: 0.737, blue: 0.18, alpha: 1)
+        windowZoom = color(colors["windowZoom"]) ?? NSColor(srgbRed: 0.157, green: 0.784, blue: 0.251, alpha: 1)
+        gradient = CGFloat(num(effects, "gradient", 0.07))
+        shine = CGFloat(num(effects, "shine", 0.7))
+        itemHeight = CGFloat(num(geometry, "itemHeight", 38))
+        ringWidth = CGFloat(num(effects, "selectedRingWidth", 2))
         accentText = color(colors["accentText"]) ?? .white
         bodyFamily = (font["family"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? "Rajdhani"
         displayFamily = (font["display"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? bodyFamily
@@ -100,7 +120,7 @@ enum AINCRADTheme {
     }
 
     private static var signature: String {
-        [accent, panel, panelText, footer, circleBorder, circleIcon].map { $0.description }.joined() + "\(circleDiameter)\(cornerRadius)\(borderWidth)\(bodySize)" + bodyFamily + displayFamily + playerName
+        [accent, panel, panelText, footer, circleBorder, circleIcon, iconBadge, windowClose, windowMinimize, windowZoom].map { $0.description }.joined() + "\(circleDiameter)\(cornerRadius)\(borderWidth)\(bodySize)" + bodyFamily + displayFamily + playerName
     }
 
     private static func json(_ url: URL) -> [String: Any]? {
@@ -132,13 +152,21 @@ enum AINCRADTheme {
         return NSFontManager.shared.font(withFamily: family, traits: [], weight: w, size: size) ?? NSFont(name: family, size: size)
     }
 
-    /// The toolbar button diameter: the launcher's circle size, scaled down a little for a toolbar (never under 38).
-    static var buttonSize: CGFloat { max(38, min(48, (circleDiameter * 0.8).rounded())) }
+    /// The toolbar button diameter: nearly the launcher's circle size (never under 40 or over 52).
+    static var buttonSize: CGFloat { max(40, min(52, (circleDiameter * 0.92).rounded())) }
 
     /// A launcher-style glyph: the same SF Symbols, a touch bolder.
     static func glyph(_ name: String, _ help: String? = nil) -> NSImage? {
         NSImage(systemSymbolName: name, accessibilityDescription: help)?
-            .withSymbolConfiguration(.init(pointSize: buttonSize * 0.4, weight: .semibold))
+            .withSymbolConfiguration(.init(pointSize: 40, weight: .medium))
+    }
+
+    /// The launcher's two-stop fill: a touch lighter at the top and darker at the bottom (effects.gradient).
+    static func shade(_ color: NSColor) -> [CGColor] {
+        let c = color.usingColorSpace(.sRGB) ?? color
+        let top = (c.blended(withFraction: gradient, of: .white) ?? c).withAlphaComponent(c.alphaComponent)
+        let bottom = (c.blended(withFraction: gradient, of: .black) ?? c).withAlphaComponent(c.alphaComponent)
+        return [top.cgColor, bottom.cgColor]
     }
 
     static func displayFont(size: CGFloat) -> NSFont {
