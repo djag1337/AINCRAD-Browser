@@ -47,7 +47,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         switch BrowserPrefsModel.shared.prefs.windowSize {
         case "compact": return NSRect(x: 0, y: 0, width: min(1200, screen.width), height: min(720, screen.height))
         case "large": return NSRect(x: 0, y: 0, width: min(1440, screen.width * 0.94), height: min(940, screen.height * 0.94))
-        default: return NSRect(x: 0, y: 0, width: min(max(1280, screen.width * 0.92), screen.width), height: min(max(720, screen.height * 0.88), screen.height))
+        default: return NSRect(x: 0, y: 0, width: min(max(1280, screen.width * 0.97), screen.width), height: min(max(720, screen.height * 0.88), screen.height))
         }
     }
 

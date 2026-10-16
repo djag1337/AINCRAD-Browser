@@ -219,6 +219,7 @@ final class CircleButton: NSControl {
     private var widthC: NSLayoutConstraint?
     private var heightC: NSLayoutConstraint?
     private var lastTint: NSColor?
+    private var renderedSide: CGFloat = 0
 
     override var isEnabled: Bool { didSet { alphaValue = isEnabled ? 1 : 0.4 } }
     override var toolTip: String? { didSet { setAccessibilityLabel(toolTip) } }
@@ -262,6 +263,8 @@ final class CircleButton: NSControl {
         let s = (d * 0.46).rounded()
         iconLayer.frame = CGRect(x: (d - s) / 2, y: (d - s) / 2, width: s, height: s)
         layer?.shadowPath = CGPath(ellipseIn: bounds, transform: nil)
+        // Re-draw the icon at its real size (it used to be drawn before layout, then stretched: pixelated).
+        if abs(renderedSide - s) > 0.5 { renderedSide = s; renderIcon() }
         restyle()
     }
 
@@ -301,7 +304,7 @@ final class CircleButton: NSControl {
 
     private func renderIcon() {
         guard let image, let tint = lastTint ?? Optional(AINCRADTheme.circleIcon) else { iconLayer.contents = nil; return }
-        let scale = window?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2
+        let scale = max(window?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2, 2)
         let side = max(iconLayer.bounds.width, 12)
         let size = NSSize(width: side, height: side)
         let tinted = NSImage(size: size, flipped: false) { rect in
@@ -317,6 +320,8 @@ final class CircleButton: NSControl {
         var rect = NSRect(origin: .zero, size: NSSize(width: side * scale, height: side * scale))
         iconLayer.contents = tinted.cgImage(forProposedRect: &rect, context: nil, hints: nil)
         iconLayer.contentsScale = scale
+        iconLayer.magnificationFilter = .trilinear
+        iconLayer.minificationFilter = .trilinear
     }
 
     override func viewDidMoveToWindow() { super.viewDidMoveToWindow(); lastTint = nil; restyle() }
