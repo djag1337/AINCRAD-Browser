@@ -17,7 +17,10 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         window.titlebarAppearsTransparent = true
         window.isMovableByWindowBackground = false
         window.minSize = NSSize(width: 760, height: 520)
-        window.backgroundColor = .windowBackgroundColor
+        // See-through behind the floating bar; the page panel and buttons carry their own surfaces.
+        window.isOpaque = false
+        window.backgroundColor = .clear
+        window.hasShadow = true
         window.tabbingMode = .disallowed
         window.contentViewController = browser
         // Attaching a view controller shrinks the window to the view's tiny natural size, so set the real one after.

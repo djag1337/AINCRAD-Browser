@@ -1,7 +1,5 @@
 Installed from AINCRAD Settings › Browser, or unzip and drag to Applications.
 
-- Launcher-style tabs with ✕, middle-click close, right-click menu, pinning
-- Full keyboard shortcuts and menus (Help › Keyboard Shortcuts)
-- Bigger default window; Compact/Large options
-- Its own theme, if you want one (default: follows AINCRAD)
+- Floating, see-through toolbar like the launcher; the page sits in a rounded panel (switch off for a solid bar)
+- Launcher-style tabs, buttons and shortcuts from 0.8
 - Signed with a development certificate, not notarised (right-click Open if you download the zip manually)

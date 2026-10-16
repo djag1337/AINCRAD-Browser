@@ -180,10 +180,12 @@ final class CircleButton: NSButton {
         layer?.backgroundColor = (hovering ? t.hover : t.circle).cgColor
         layer?.borderWidth = 1.2
         layer?.borderColor = (hovering ? t.accent : t.accent.withAlphaComponent(0.4)).cgColor
-        layer?.shadowColor = t.accent.cgColor
-        layer?.shadowOpacity = hovering ? 0.55 : 0
-        layer?.shadowRadius = 7
-        layer?.shadowOffset = .zero
+        // A soft dark shadow keeps the circle readable over any wallpaper; hovering swaps it for the accent glow.
+        layer?.shadowColor = (hovering ? t.accent : NSColor.black).cgColor
+        layer?.shadowOpacity = hovering ? 0.6 : 0.28
+        layer?.shadowRadius = hovering ? 7 : 4
+        layer?.shadowOffset = hovering ? .zero : CGSize(width: 0, height: -1.5)
+        layer?.masksToBounds = false
     }
 
     override func layout() { super.layout(); restyle() }

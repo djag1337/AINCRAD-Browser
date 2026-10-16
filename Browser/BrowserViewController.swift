@@ -12,7 +12,7 @@ final class BrowserViewController: NSViewController, NSSearchFieldDelegate, WKNa
     private let splitView = NSSplitView()
     private let mainView = NSView()
     private let webContainer = NSView()
-    private let toolbar = NSVisualEffectView()
+    private let toolbar = DragToolbarView()
     /// The theme's panel colour, laid over the blur (a visual effect view draws over its own layer colour).
     private let toolbarTint = NSView()
     private let tabControl = TabStripView()
@@ -68,6 +68,7 @@ final class BrowserViewController: NSViewController, NSSearchFieldDelegate, WKNa
 
     @objc private func prefsChanged() {
         BrowserFeatures.shared.prefsChanged()
+        applyTheme()
         tabs.forEach { BrowserFeatures.shared.configure($0) }
         refreshStartPages()
     }
@@ -89,10 +90,15 @@ final class BrowserViewController: NSViewController, NSSearchFieldDelegate, WKNa
     private func applyTheme() {
         let dark = AINCRADTheme.isDark
         view.window?.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
-        toolbar.material = dark ? .hudWindow : .headerView
         // Dark themes' panels are see-through, which the blur turns grey; keep them solid.
-        toolbarTint.layer?.backgroundColor = (dark ? AINCRADTheme.panel.withAlphaComponent(1) : AINCRADTheme.panel).cgColor
-        toolbar.layer?.borderColor = AINCRADTheme.panelBorder.cgColor
+        // Floating (default): the bar is see-through and only the buttons, address bar and tabs have a surface.
+        let floating = BrowserPrefsModel.shared.prefs.floatingToolbar
+        toolbarTint.layer?.backgroundColor = floating ? NSColor.clear.cgColor : (dark ? AINCRADTheme.panel.withAlphaComponent(1) : AINCRADTheme.panel).cgColor
+        webContainer.layer?.backgroundColor = (dark ? NSColor(srgbRed: 0.055, green: 0.063, blue: 0.086, alpha: 1) : NSColor.white).cgColor
+        webContainer.layer?.borderColor = AINCRADTheme.accent.withAlphaComponent(0.55).cgColor
+        webContainer.layer?.cornerRadius = floating ? 10 : 0
+        webContainer.layer?.borderWidth = floating ? 1.2 : 0
+        addressField.layer?.backgroundColor = AINCRADTheme.circle.withAlphaComponent(1).cgColor
         for button in [sidebarButton, backButton, forwardButton, reloadButton, bookmarkButton, shareButton, downloadsButton, addTabButton, aincradButton] {
             button.restyle()
         }
@@ -133,9 +139,6 @@ final class BrowserViewController: NSViewController, NSSearchFieldDelegate, WKNa
     }
 
     private func configureToolbar() {
-        toolbar.material = .hudWindow
-        toolbar.blendingMode = .behindWindow
-        toolbar.state = .active
         toolbar.translatesAutoresizingMaskIntoConstraints = false
         mainView.addSubview(toolbar)
         toolbar.wantsLayer = true
@@ -143,8 +146,6 @@ final class BrowserViewController: NSViewController, NSSearchFieldDelegate, WKNa
         toolbarTint.frame = toolbar.bounds
         toolbarTint.autoresizingMask = [.width, .height]
         toolbar.addSubview(toolbarTint)
-        toolbar.layer?.borderColor = NSColor.white.withAlphaComponent(0.8).cgColor
-        toolbar.layer?.borderWidth = 1
 
         func symbolButton(_ button: CircleButton, symbol: String, action: Selector, help: String) {
             button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: help)
@@ -177,6 +178,7 @@ final class BrowserViewController: NSViewController, NSSearchFieldDelegate, WKNa
         addressField.layer?.cornerRadius = 4
         addressField.layer?.borderWidth = 1
         addressField.layer?.borderColor = AINCRADTheme.accent.withAlphaComponent(0.72).cgColor
+        addressField.layer?.backgroundColor = AINCRADTheme.circle.withAlphaComponent(1).cgColor
         addressField.font = AINCRADTheme.bodyFont(size: 14)
 
         tabControl.onSelect = { [weak self] in self?.selectTab(at: $0) }
@@ -194,8 +196,6 @@ final class BrowserViewController: NSViewController, NSSearchFieldDelegate, WKNa
 
         productLabel.font = AINCRADTheme.displayFont(size: 11)
         productLabel.textColor = AINCRADTheme.panelText
-        productLabel.translatesAutoresizingMaskIntoConstraints = false
-        productLabel.setAccessibilityLabel("AINCRAD Browser")
 
         accentRule.wantsLayer = true
         accentRule.layer?.backgroundColor = AINCRADTheme.accent.cgColor
@@ -208,28 +208,28 @@ final class BrowserViewController: NSViewController, NSSearchFieldDelegate, WKNa
         nav.orientation = .horizontal; nav.spacing = 3; nav.translatesAutoresizingMaskIntoConstraints = false
         let right = NSStackView(views: [privacyBadge, downloadsButton, shareButton, bookmarkButton])
         right.orientation = .horizontal; right.spacing = 5; right.translatesAutoresizingMaskIntoConstraints = false
-        [nav, addressField, right, productLabel, tabControl, addTabButton, progress, accentRule].forEach(toolbar.addSubview)
+        [nav, addressField, right, tabControl, addTabButton, progress].forEach(toolbar.addSubview)
 
         NSLayoutConstraint.activate([
-            toolbar.topAnchor.constraint(equalTo: mainView.topAnchor), toolbar.leadingAnchor.constraint(equalTo: mainView.leadingAnchor), toolbar.trailingAnchor.constraint(equalTo: mainView.trailingAnchor), toolbar.heightAnchor.constraint(equalToConstant: 102),
+            toolbar.topAnchor.constraint(equalTo: mainView.topAnchor), toolbar.leadingAnchor.constraint(equalTo: mainView.leadingAnchor), toolbar.trailingAnchor.constraint(equalTo: mainView.trailingAnchor), toolbar.heightAnchor.constraint(equalToConstant: 100),
             nav.leadingAnchor.constraint(equalTo: toolbar.leadingAnchor, constant: 76), nav.topAnchor.constraint(equalTo: toolbar.topAnchor, constant: 10),
             addressField.leadingAnchor.constraint(equalTo: nav.trailingAnchor, constant: 8), addressField.topAnchor.constraint(equalTo: toolbar.topAnchor, constant: 10), addressField.heightAnchor.constraint(equalToConstant: 36),
             right.leadingAnchor.constraint(equalTo: addressField.trailingAnchor, constant: 8), right.trailingAnchor.constraint(equalTo: toolbar.trailingAnchor, constant: -12), right.centerYAnchor.constraint(equalTo: addressField.centerYAnchor),
             addressField.widthAnchor.constraint(greaterThanOrEqualToConstant: 280),
-            productLabel.leadingAnchor.constraint(equalTo: toolbar.leadingAnchor, constant: 14), productLabel.centerYAnchor.constraint(equalTo: tabControl.centerYAnchor), productLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: 132), productLabel.widthAnchor.constraint(lessThanOrEqualToConstant: 150),
-            tabControl.leadingAnchor.constraint(equalTo: productLabel.trailingAnchor, constant: 8), tabControl.trailingAnchor.constraint(equalTo: addTabButton.leadingAnchor, constant: -6), tabControl.topAnchor.constraint(equalTo: addressField.bottomAnchor, constant: 11), tabControl.heightAnchor.constraint(equalToConstant: 32),
+            tabControl.leadingAnchor.constraint(equalTo: toolbar.leadingAnchor, constant: 14), tabControl.trailingAnchor.constraint(equalTo: addTabButton.leadingAnchor, constant: -6), tabControl.topAnchor.constraint(equalTo: addressField.bottomAnchor, constant: 11), tabControl.heightAnchor.constraint(equalToConstant: 32),
             addTabButton.trailingAnchor.constraint(equalTo: toolbar.trailingAnchor, constant: -10), addTabButton.centerYAnchor.constraint(equalTo: tabControl.centerYAnchor),
-            progress.leadingAnchor.constraint(equalTo: toolbar.leadingAnchor), progress.trailingAnchor.constraint(equalTo: toolbar.trailingAnchor), progress.bottomAnchor.constraint(equalTo: toolbar.bottomAnchor), progress.heightAnchor.constraint(equalToConstant: 2),
-            accentRule.leadingAnchor.constraint(equalTo: toolbar.leadingAnchor), accentRule.trailingAnchor.constraint(equalTo: toolbar.trailingAnchor), accentRule.bottomAnchor.constraint(equalTo: toolbar.bottomAnchor), accentRule.heightAnchor.constraint(equalToConstant: 1)
+            progress.leadingAnchor.constraint(equalTo: toolbar.leadingAnchor), progress.trailingAnchor.constraint(equalTo: toolbar.trailingAnchor), progress.bottomAnchor.constraint(equalTo: toolbar.bottomAnchor), progress.heightAnchor.constraint(equalToConstant: 2)
         ])
         rebuildTabControl()
     }
 
     private func configureWebContainer() {
         webContainer.translatesAutoresizingMaskIntoConstraints = false
+        webContainer.wantsLayer = true
+        webContainer.layer?.masksToBounds = true
         mainView.addSubview(webContainer)
         NSLayoutConstraint.activate([
-            webContainer.topAnchor.constraint(equalTo: toolbar.bottomAnchor), webContainer.leadingAnchor.constraint(equalTo: mainView.leadingAnchor), webContainer.trailingAnchor.constraint(equalTo: mainView.trailingAnchor), webContainer.bottomAnchor.constraint(equalTo: mainView.bottomAnchor)
+            webContainer.topAnchor.constraint(equalTo: toolbar.bottomAnchor), webContainer.leadingAnchor.constraint(equalTo: mainView.leadingAnchor, constant: 8), webContainer.trailingAnchor.constraint(equalTo: mainView.trailingAnchor, constant: -8), webContainer.bottomAnchor.constraint(equalTo: mainView.bottomAnchor, constant: -8)
         ])
     }
 
@@ -622,4 +622,12 @@ extension Notification.Name {
 
 extension Array {
     subscript(safe index: Int) -> Element? { indices.contains(index) ? self[index] : nil }
+}
+
+/// The see-through bar above the page: dragging its empty space moves the window, double-click zooms it.
+final class DragToolbarView: NSView {
+    override var mouseDownCanMoveWindow: Bool { true }
+    override func mouseDown(with event: NSEvent) {
+        if event.clickCount == 2 { window?.performZoom(nil) } else { super.mouseDown(with: event) }
+    }
 }
