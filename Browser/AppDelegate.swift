@@ -58,6 +58,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             normal[w].browser.showTab(at: i)
             normal[w].window?.makeKeyAndOrderFront(nil)
         case "new": newTab(nil)
+        case "bookmark":
+            // The page in front, in the most recently used normal window (the launcher, not the browser, is active here).
+            let front = NSApp.orderedWindows.compactMap { ($0.windowController as? BrowserWindowController)?.browser }.first { !$0.privateMode }
+            (front ?? windows.last(where: { !$0.browser.privateMode })?.browser)?.bookmarkCurrentPage()
         case "private": openWindow(privateMode: true)
         default: break
         }

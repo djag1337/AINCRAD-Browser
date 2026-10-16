@@ -90,7 +90,7 @@ final class BrowserViewController: NSViewController, NSSearchFieldDelegate, WKNa
     // MARK: Auto-hiding toolbar
 
     /// One row: window buttons, navigation, the tab pills, then search and the rest.
-    private let pillHeight: CGFloat = 38
+    private var pillHeight: CGFloat { AINCRADTheme.tabHeight }
     private var toolbarHeight: CGFloat { AINCRADTheme.buttonSize + 26 }
     private var rowCenterOffset: CGFloat { toolbarHeight / 2 }
     private let rowGuide = NSLayoutGuide()
@@ -162,7 +162,7 @@ final class BrowserViewController: NSViewController, NSSearchFieldDelegate, WKNa
         toolbarShown = shown
         if shown { toolbar.isHidden = false; startHoverWatch() } else { hoverTimer?.invalidate(); hoverTimer = nil }
         NSAnimationContext.runAnimationGroup { context in
-            context.duration = animated ? 0.3 : 0
+            context.duration = animated ? 0.22 : 0
             context.timingFunction = CAMediaTimingFunction(name: .easeOut)
             context.allowsImplicitAnimation = true
             webTopConstraint?.animator().constant = shown ? panelTop : 8
@@ -172,33 +172,25 @@ final class BrowserViewController: NSViewController, NSSearchFieldDelegate, WKNa
                                searchButton, downloadsButton, shareButton, bookmarkButton, addTabButton, tabControl, addressField, privacyBadge]
             .filter { !$0.isHidden && $0.layer != nil }
         let mid = toolbar.bounds.midX
-        let rise = toolbar.bounds.height + 14
+        let rise: CGFloat = 22
         for view in items {
             guard let layer = view.layer, let parent = view.superview else { continue }
             let frame = parent.convert(view.frame, to: toolbar)
-            let away = CATransform3DMakeTranslation((mid - frame.midX) * 0.9, rise, 0)
+            let away = CATransform3DMakeTranslation((mid - frame.midX) * 0.06, rise, 0)
             let from = shown ? away : CATransform3DIdentity
             let to = shown ? CATransform3DIdentity : away
             layer.removeAnimation(forKey: "burst")
             guard animated else { continue }
-            let move: CABasicAnimation
-            if shown {
-                let spring = CASpringAnimation(keyPath: "transform")
-                spring.damping = 17; spring.stiffness = 210; spring.mass = 1
-                spring.duration = spring.settlingDuration
-                move = spring
-            } else {
-                move = CABasicAnimation(keyPath: "transform")
-                move.duration = 0.2
-                move.timingFunction = CAMediaTimingFunction(name: .easeIn)
-            }
+            let move = CABasicAnimation(keyPath: "transform")
+            move.duration = shown ? 0.22 : 0.16
+            move.timingFunction = CAMediaTimingFunction(name: shown ? .easeOut : .easeIn)
             move.fromValue = from; move.toValue = to
             let fade = CABasicAnimation(keyPath: "opacity")
             fade.fromValue = shown ? 0 : 1; fade.toValue = shown ? 1 : 0
-            fade.duration = shown ? 0.16 : 0.2
+            fade.duration = shown ? 0.2 : 0.16
             let group = CAAnimationGroup()
             group.animations = [move, fade]
-            group.duration = shown ? (move.duration) : 0.2
+            group.duration = move.duration
             group.fillMode = .forwards
             group.isRemovedOnCompletion = shown
             layer.add(group, forKey: "burst")
@@ -209,7 +201,7 @@ final class BrowserViewController: NSViewController, NSSearchFieldDelegate, WKNa
             for view in items { view.layer?.removeAnimation(forKey: "burst") }
         }
         if shown { return }
-        if animated { DispatchQueue.main.asyncAfter(deadline: .now() + 0.22, execute: finish) } else { finish() }
+        if animated { DispatchQueue.main.asyncAfter(deadline: .now() + 0.18, execute: finish) } else { finish() }
     }
 
     @objc private func prefsChanged() {
@@ -319,7 +311,7 @@ final class BrowserViewController: NSViewController, NSSearchFieldDelegate, WKNa
         symbolButton(downloadsButton, symbol: "arrow.down.circle", action: #selector(downloadsAction), help: "Downloads (⌘J)")
         symbolButton(addTabButton, symbol: "plus", action: #selector(addTabAction), help: "New Tab (⌘T)")
         symbolButton(aincradButton, symbol: "circle.circle", action: #selector(openAINCRAD), help: "Open the AINCRAD launcher")
-        aincradButton.isHidden = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.djag.aincrad") == nil
+        aincradButton.isHidden = true   // the launcher button was removed from the bar
 
         // The address bar is a pill that opens over the tabs when you press the search button.
         addressField.placeholderString = "Search or enter website name"
@@ -355,7 +347,7 @@ final class BrowserViewController: NSViewController, NSSearchFieldDelegate, WKNa
 
         let lights = NSStackView(views: [closeLight, minLight, zoomLight])
         lights.orientation = .horizontal; lights.spacing = 8; lights.translatesAutoresizingMaskIntoConstraints = false
-        let nav = NSStackView(views: [aincradButton, sidebarButton, backButton, forwardButton, reloadButton])
+        let nav = NSStackView(views: [sidebarButton, backButton, forwardButton, reloadButton])
         nav.orientation = .horizontal; nav.spacing = 8; nav.translatesAutoresizingMaskIntoConstraints = false
         let right = NSStackView(views: [privacyBadge, searchButton, downloadsButton, shareButton, bookmarkButton, addTabButton])
         right.orientation = .horizontal; right.spacing = 8; right.translatesAutoresizingMaskIntoConstraints = false

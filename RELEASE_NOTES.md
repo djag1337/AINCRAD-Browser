@@ -1,6 +1,6 @@
 Installed from AINCRAD Settings › Browser, or unzip and drag to Applications.
 
-- No blur; tabs are slightly taller pills back inline in the button row, sharing the gap equally (they scroll once they'd get narrower than 110 px)
-- The search pill opens over the tabs again
-- The page drops below the bar when it appears and the bar retracts when the pointer leaves
+- Launcher button removed from the bar; taller tab pills (nearly the buttons' height)
+- Calmer reveal: no bounce, much shorter travel
+- `aincrad-browser://bookmark` saves the page in front (used by AINCRAD's Web section)
 - Signed with a development certificate, not notarised (right-click Open if you download the zip manually)
