@@ -462,6 +462,20 @@ final class BrowserViewController: NSViewController, NSSearchFieldDelegate, WKNa
         if select { selectTab(at: tabs.count - 1) }
     }
 
+    func showWelcome() {
+        guard tabs.indices.contains(selectedIndex) else { return }
+        tabs[selectedIndex].webView.loadHTMLString(StartPage.welcome(), baseURL: URL(string: "glass://start"))
+        tabs[selectedIndex].title = "Welcome"
+        rebuildTabControl()
+    }
+
+    func showStartPage() {
+        guard tabs.indices.contains(selectedIndex) else { return }
+        tabs[selectedIndex].webView.loadHTMLString(StartPage.html(privateMode: privateMode), baseURL: URL(string: "glass://start"))
+        tabs[selectedIndex].title = "New Tab"
+        rebuildTabControl()
+    }
+
     func newTab(focusAddress: Bool = true) {
         createTab(state: nil, select: true, blank: BrowserPrefsModel.shared.prefs.newTabPage == "blank")
         if focusAddress { focusAddressBar() }
@@ -620,7 +634,7 @@ final class BrowserViewController: NSViewController, NSSearchFieldDelegate, WKNa
     private func updateTitle(for tab: BrowserTab?) {
         guard let tab else { return }
         tab.title = tab.webView.url?.scheme == "glass" || tab.webView.url == nil
-            ? "New Tab" : (tab.webView.title?.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty ?? tab.webView.url?.host ?? "Untitled")
+            ? (tab.title == "Welcome" ? "Welcome" : "New Tab") : (tab.webView.title?.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty ?? tab.webView.url?.host ?? "Untitled")
         rebuildTabControl()
         if tab === tabs[selectedIndex] { view.window?.title = privateMode ? "\(tab.title) — Private — AINCRAD Browser" : "\(tab.title) — AINCRAD Browser" }
         notifyStateChanged()

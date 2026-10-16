@@ -16,6 +16,10 @@ All of these live in one settings page. With AINCRAD installed it's **AINCRAD Se
 - **Start page**: HUD brackets, favourites as circles, recent sites, a clock, all optional; new tabs can open blank
 - Pinned tabs, tab reordering and duplication, session restore (optional), private windows
 
+## First run
+
+The first launch opens a short tour (where the bar is, how search works, bookmarks, themes, privacy). *Start browsing* ends it. To see it again: AINCRAD Settings › Browser › Introduction › **Show the introduction again** (or `aincrad-browser://welcome`), which opens a fresh window with the tour.
+
 ## Keyboard shortcuts
 
 | | |

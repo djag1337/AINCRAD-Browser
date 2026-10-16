@@ -23,6 +23,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         NSApp.activate(ignoringOtherApps: true)
         publishLink()
+        if !BrowserPrefsModel.shared.prefs.hasSeenIntro {
+            // First launch: show the tour in the front window's first tab.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+                self?.windows.last(where: { !$0.browser.privateMode })?.browser.showWelcome()
+            }
+        }
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
@@ -74,6 +80,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             normal[w].browser.showTab(at: i)
             normal[w].window?.makeKeyAndOrderFront(nil)
         case "new": newTab(nil)
+        case "welcome":
+            let controller = openWindow(privateMode: false)
+            controller.browser.showWelcome()
+            NSApp.activate(ignoringOtherApps: true)
+        case "done":
+            BrowserPrefsModel.shared.prefs.hasSeenIntro = true
+            (currentBrowser() ?? windows.last(where: { !$0.browser.privateMode })?.browser)?.showStartPage()
         case "bookmark":
             // The page in front, in the most recently used normal window (the launcher, not the browser, is active here).
             let front = NSApp.orderedWindows.compactMap { ($0.windowController as? BrowserWindowController)?.browser }.first { !$0.privateMode }

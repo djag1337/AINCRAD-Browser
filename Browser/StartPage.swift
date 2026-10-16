@@ -62,6 +62,43 @@ enum StartPage {
         """
     }
 
+    /// The first-run tour: what the bar does and where everything is.
+    static func welcome() -> String {
+        let steps: [(String, String, String)] = [
+            ("⌄", "The bar lives at the bottom", "Move the pointer to the bottom edge and it slides up: window buttons, back and forward, your tabs, search, downloads, share and bookmark. It tucks away when you leave, so pages get the whole window."),
+            ("⌕", "Search is a button", "Press the magnifier (or ⌘L) and the address pill opens over your tabs. Return or Esc puts the tabs back."),
+            ("▤", "Tabs, bookmarks and history", "Tabs are pills (middle-click or ✕ closes, right-click for more). The books button, ⌘B and ⌘Y open bookmarks and history as a dropdown."),
+            ("◎", "It matches AINCRAD", "The browser wears your launcher theme live. With AINCRAD installed, its Web circle lists your tabs and bookmarks and can open a new tab."),
+            ("⚙", "Make it yours", "Settings (⌘,) has ad and tracker blocking, reader mode (⇧⌘R), dark pages, search engines, toolbar size, themes and more. Help › Keyboard Shortcuts lists every key."),
+            ("🔒", "Private by design", "Private windows save nothing and are never shared with AINCRAD. The browser never reads your passwords; Apple Passwords handles sign-in."),
+        ]
+        let cards = steps.map { icon, title, body in
+            "<div class='step panel'><i>\(icon)</i><div><b>\(escape(title))</b><p>\(escape(body))</p></div></div>"
+        }.joined()
+        return """
+        <!doctype html><html><head><meta charset="utf-8"><meta name="color-scheme" content="light dark">
+        <style>\(fontFaces)
+        \(vars)
+        :root{font-family:var(--body),-apple-system,sans-serif;color:var(--text);background:var(--bg)}
+        body{margin:0;min-height:100vh;display:grid;place-items:center;background:linear-gradient(135deg,\(AINCRADTheme.isDark ? "rgba(255,255,255,.06)" : "rgba(255,255,255,.72)"),transparent 42%)}
+        main{width:min(820px,88vw);padding:48px 0}
+        h1{font-family:var(--display),sans-serif;font-size:32px;letter-spacing:3px;text-align:center;margin:0 0 6px}
+        .sub{text-align:center;opacity:.7;font-size:18px;margin:0 0 30px;letter-spacing:.5px}
+        .grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+        .panel{background:var(--panel);border:1px solid var(--border);border-radius:4px;box-shadow:0 4px 12px rgba(0,0,0,.1)}
+        .step{display:flex;gap:14px;padding:16px;align-items:flex-start}
+        .step i{flex:none;width:44px;height:44px;border-radius:50%;display:grid;place-items:center;border:1.5px solid var(--accent);color:var(--accent);font:600 20px var(--display);font-style:normal;box-shadow:0 0 10px var(--accent)}
+        .step b{font-family:var(--display),sans-serif;font-size:13px;letter-spacing:1px;color:var(--accent)}
+        .step p{margin:6px 0 0;font-size:16px;line-height:1.35}
+        .go{display:block;margin:30px auto 0;width:max-content;padding:14px 38px;border-radius:30px;background:var(--accent);color:#fff;text-decoration:none;font:600 20px var(--display);letter-spacing:2px;box-shadow:0 0 18px var(--accent)}
+        </style></head><body><main>
+        <h1>WELCOME TO AINCRAD BROWSER</h1><p class="sub">A quick tour. You can replay it any time from Settings.</p>
+        <div class="grid">\(cards)</div>
+        <a class="go" href="aincrad-browser://done">START BROWSING</a>
+        </main></body></html>
+        """
+    }
+
     private static func orbRow(_ items: [(String, String)]) -> String {
         let orbs = items.map { title, url in
             let letter = escape(String((title.first(where: { $0.isLetter || $0.isNumber }) ?? "/")).uppercased())
